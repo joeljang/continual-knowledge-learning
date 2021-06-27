@@ -1,0 +1,9 @@
+transformers==4.3.3
+pytorch-lightning==1.2.6
+pandas
+numpy
+nlp==0.4.0
+sentencepiece==0.1.94
+wandb
+nltk
+google-cloud-storage
