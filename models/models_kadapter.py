@@ -154,10 +154,10 @@ class AdapterModel(nn.Module):
 class T5FineTuner(pl.LightningModule):
     def __init__(self, hparams):
         super(T5FineTuner, self).__init__()
+        self.save_hyperparameters(hparams)
         self.config = T5Config.from_pretrained(hparams.model_name_or_path)
         self.adapter = AdapterModel(self.config)
         self.concat_dense = nn.Linear(self.config.d_model + self.config.d_model, self.config.d_model)
-        self.hparams = hparams
         self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.criterion = nn.CrossEntropyLoss()
         self.softmax = nn.Softmax(2)

@@ -49,7 +49,7 @@ GreedySearchOutput = Union[GreedySearchEncoderDecoderOutput, GreedySearchDecoder
 class T5FineTuner(pl.LightningModule):
     def __init__(self, hparams):
         super(T5FineTuner, self).__init__()
-        self.hparams = hparams
+        self.save_hyperparameters(hparams)
         self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.module = T5EncoderModel.from_pretrained('google/t5-small-ssm')
         self.projection = nn.Linear(512, 1024)
