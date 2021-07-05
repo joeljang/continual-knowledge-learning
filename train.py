@@ -50,6 +50,7 @@ if __name__ == '__main__':
     args_dict = dict(
         output_dir=hparam.output_dir, # Path to save the checkpoints
         dataset=hparam.dataset,
+        dataset_version = hparam.dataset_version,
         model_name_or_path=hparam.model,
         model_type=hparam.model_type,
         mode=hparam.mode,

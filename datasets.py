@@ -16,9 +16,18 @@ class Pretrain(Dataset):
         self.tokenizer = tokenizer
         self.type_path = type_path
         self.ssm = False
+        self.dataset_version = self.args.dataset_version
+        dataset_v = ['debug', 'small', 'full']
+        if not self.dataset_version in dataset_v:
+            raise Exception(f'Provided the correct dataset version among {dataset_v}')
         if self.args.dataset == 'recentnews':
             if type_path=='train':
-                self.dataset = pd.read_csv('data/recent_news_20000.csv')
+                if self.dataset_version=='debug':
+                    self.dataset = pd.read_csv('data/recent_news_debug.csv')
+                elif self.dataset_version=='small':
+                    self.dataset = pd.read_csv('data/recent_news_small.csv')
+                elif self.dataset_version=='full':
+                    self.dataset = pd.read_csv('data/recent_news_full.csv')
             else:
                 self.dataset = self.get_recent_val(-1,-1) #Getting validation data for both LAMA-entity and RecentProbe
         else:
@@ -37,7 +46,12 @@ class Pretrain(Dataset):
         
     def get_recent_val(self, lama_num, recent_num):
         lama = pd.read_csv('data/lama_template.csv')
-        recent = pd.read_csv('data/recent_news_summary_6000.csv')
+        if self.dataset_version=='debug':
+            recent = pd.read_csv('data/recentprobe_m_debug.csv')
+        elif self.dataset_version=='small':
+            recent = pd.read_csv('data/recentprobe_m_small.csv')
+        elif self.dataset_version=='full':
+            recent = pd.read_csv('data/recentprobe_m_full.csv')
         dataset = []
         for index, row in lama.iterrows():
             dataset.append(row)

@@ -4,6 +4,7 @@
     "num_train_epochs" : 8,
     "output_dir" : "outputs/T5_large_pretrain_recentnews_lr.0005_scheduling_m_small",
     "dataset" : "recentnews",
+    "dataset_version" : "debug",
     "train_batch_size" : 6,
     "learning_rate" : 5e-4,
     "model" : "google/t5-large-ssm",
