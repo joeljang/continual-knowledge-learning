@@ -45,13 +45,15 @@ class Pretrain(Dataset):
         self.sentinels = sentinels
         
     def get_recent_val(self, lama_num, recent_num):
-        lama = pd.read_csv('data/lama_template.csv')
         if self.dataset_version=='debug':
             recent = pd.read_csv('data/recentprobe_m_debug.csv')
+            lama = pd.read_csv('data/lama_template_debug.csv')
         elif self.dataset_version=='small':
             recent = pd.read_csv('data/recentprobe_m_small.csv')
+            lama = pd.read_csv('data/lama_template.csv')
         elif self.dataset_version=='full':
             recent = pd.read_csv('data/recentprobe_m_full.csv')
+            lama = pd.read_csv('data/lama_template.csv')
         dataset = []
         for index, row in lama.iterrows():
             dataset.append(row)
