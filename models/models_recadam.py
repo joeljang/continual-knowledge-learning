@@ -216,8 +216,12 @@ class T5FineTuner(pl.LightningModule):
         em_score = torch.tensor(em_score,dtype=torch.float32)
         subset_match_score = torch.tensor(subset_match_score,dtype=torch.float32)
         #bleu_score = torch.tensor(bleu_score,dtype=torch.float32)
+        if self.hparams.dataset_version=='debug':
+            lama_len = 1202
+        else:
+            lama_len = 20725
         if self.hparams.dataset=='recentnews':
-            if val_num < 20720:
+            if val_num < lama_len:
                 self.log('lama_em_score', em_score, prog_bar=True, logger=True)
                 self.log('lama_subset_match_score', subset_match_score, prog_bar=True, logger=True)
             else:
