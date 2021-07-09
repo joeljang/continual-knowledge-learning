@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
     #Logging into WANDB if needed
     if hparam.wandb_log:
-        wandb_logger = WandbLogger(project=hparam.wandb_project, name=hparam.wandb_run_name)
+        wandb_logger = WandbLogger(project=hparam.wandb_project, name=hparam.wandb_run_name, entity="lklab_kaist")
     else:
         wandb_logger = None
 
