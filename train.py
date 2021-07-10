@@ -109,7 +109,7 @@ if __name__ == '__main__':
     # Setting Flags for pytorch lightning trainer. Details: https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#trainer-flags
     train_params = dict(
         accumulate_grad_batches=args.gradient_accumulation_steps,
-        plugins=args.plugins,
+        #plugins=args.plugins,
         gpus=args.n_gpu,
         max_epochs=args.num_train_epochs,
         precision= 16 if args.fp_16 else 32,

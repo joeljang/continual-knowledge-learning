@@ -35,7 +35,7 @@ class Pretrain(Dataset):
         print(f'length of dataset: {len(self.dataset)}')
         if self.args.dataset == 'recentnews' and type_path=='validation':
             self.input_length = 50
-            self.output_length = 4
+            self.output_length = 10
         else:
             self.input_length = input_length
             self.output_length = output_length

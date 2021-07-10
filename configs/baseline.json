@@ -8,7 +8,7 @@
     "train_batch_size" : 5,
     "learning_rate" : 1e-3,
     "model" : "google/t5-large-ssm",
-    "model_type": "models_modular",
+    "model_type": "models_baseline",
     "gradient_accumulation_steps" : 1,
     "ngpu" : 4,
     "num_workers" : 40,
