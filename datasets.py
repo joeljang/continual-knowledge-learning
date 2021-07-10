@@ -16,9 +16,23 @@ class Pretrain(Dataset):
         self.tokenizer = tokenizer
         self.type_path = type_path
         self.ssm = False
+        self.dataset_version = self.args.dataset_version
+        dataset_v = ['debug', 'small', 'full']
+        if not self.dataset_version in dataset_v:
+            raise Exception(f'Provided the correct dataset version among {dataset_v}')
         if self.args.dataset == 'recentnews':
             if type_path=='train':
-                self.dataset = pd.read_csv('data/recent_news_20000.csv')
+                if self.dataset_version=='debug':
+                    self.dataset = pd.read_csv('data/recent_news_debug.csv')
+                elif self.dataset_version=='small':
+                    self.dataset = pd.read_csv('data/recent_news_small.csv')
+                elif self.dataset_version=='full':
+                    self.dataset = pd.read_csv('data/recent_news_200000.csv')
+            elif type_path =='pretrain':
+                if self.dataset_version=='debug':
+                    self.dataset = pd.read_csv('/mnt/nfs/seonghyeon/wikipedia_pretrain_debug.csv')
+                else:
+                    self.dataset = pd.read_csv('/mnt/nfs/seonghyeon/wikipedia_pretrain.csv')
             else:
                 self.dataset = self.get_recent_val(-1,-1) #Getting validation data for both LAMA-entity and RecentProbe
         else:
@@ -36,8 +50,15 @@ class Pretrain(Dataset):
         self.sentinels = sentinels
         
     def get_recent_val(self, lama_num, recent_num):
-        lama = pd.read_csv('data/lama_template.csv')
-        recent = pd.read_csv('data/recent_news_summary_6000.csv')
+        if self.dataset_version=='debug':
+            recent = pd.read_csv('data/recentprobe_m_debug.csv')
+            lama = pd.read_csv('data/lama_template_debug.csv')
+        elif self.dataset_version=='small':
+            recent = pd.read_csv('data/recentprobe_m_small.csv')
+            lama = pd.read_csv('data/lama_template.csv')
+        elif self.dataset_version=='full':
+            recent = pd.read_csv('data/recent_news_summary_6000.csv')
+            lama = pd.read_csv('data/lama_template.csv')
         dataset = []
         for index, row in lama.iterrows():
             dataset.append(row)
@@ -72,9 +93,9 @@ class Pretrain(Dataset):
         return source, targets
   
     def __getitem__(self, index):
-        if self.type_path=='train':
+        if self.type_path=='train' or self.type_path=='pretrain':
             source, targets = self.convert_to_features(self.dataset.iloc[index])
-        else:
+        else:      
             source, targets = self.convert_to_features(self.dataset[index])
         
         source_ids = source["input_ids"].squeeze()
