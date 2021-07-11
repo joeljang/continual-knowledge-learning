@@ -9,8 +9,8 @@ from transformers import (
 )
 import torch
 from datasets import Pretrain
-from torch.utils.data import RandomSampler
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import RandomSampler, SubsetRandomSampler
+from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
 
 import argparse
 import time
@@ -20,15 +20,20 @@ import string
 from string import punctuation
 import os
 from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu, sentence_bleu
+import random
 
 class T5FineTuner(pl.LightningModule):
     def __init__(self, hparams):
         super(T5FineTuner, self).__init__()
-        self.save_hyperparameters(hparams)
-        #self.config = T5Config.from_pretrained(hparams.model_name_or_path)
-        #self.model = T5ForConditionalGeneration(self.config)
+        self.hparams = hparams
+        # self.config = T5Config.from_pretrained(hparams.model_name_or_path)
+        # self.model = T5ForConditionalGeneration(self.config)
         self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.tokenizer = T5Tokenizer.from_pretrained(hparams.tokenizer_name_or_path)
+
+        self.mix_ratio = 4
+        self.mix_decay = 0.7
+        self.epoch = 0
         
         if self.hparams.freeze_embeds:
             self.freeze_embeds()
@@ -183,7 +188,6 @@ class T5FineTuner(pl.LightningModule):
     def _generative_step(self, batch, batch_idx):
         
         val_num = batch_idx * len(batch["source_ids"]) * self.hparams.n_gpu #For 2 val logs
-        print(val_num)
         t0 = time.time()
         
         generated_ids = self.model.generate(
@@ -235,6 +239,11 @@ class T5FineTuner(pl.LightningModule):
         self.log("loss", loss)
         return loss
 
+    def on_train_epoch_start(self):
+        train_set = self.train_dataloader().dataset
+        # print("incrementing epoch")
+        self.epoch+=1
+
     def validation_step(self, batch, batch_idx):
         return self._generative_step(batch, batch_idx)
 
@@ -260,7 +269,7 @@ class T5FineTuner(pl.LightningModule):
         self.opt = optimizer
         len_data = len(self.train_dataloader())
         denomniator = self.hparams.n_gpu
-        steps_per_epoch = ( len_data // denomniator ) + 1
+        steps_per_epoch = len_data // denomniator
         lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
 
         if self.hparams.use_lr_scheduling:
@@ -271,8 +280,19 @@ class T5FineTuner(pl.LightningModule):
     def train_dataloader(self):   
         n_samples = self.n_obs['train']
         train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
-        sampler=RandomSampler(train_dataset)
-        dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
+        pretrain_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="pretrain", num_samples=n_samples, args=self.hparams)
+        mixed_dataset = ConcatDataset([train_dataset,pretrain_dataset])
+        train_len = len(train_dataset)
+        mix_len = int(len(train_dataset) * self.mix_ratio * (self.mix_decay ** self.epoch))
+        pretrain_indices = [a+train_len for a in random.sample(range(0,len(pretrain_dataset)),len(pretrain_dataset))[:mix_len]]
+        print("mix len is ", mix_len)
+        train_indices = list(range(train_len))
+        indices = train_indices + pretrain_indices
+        # print("final len is ", indices)
+        # sampler = SubsetRandomSampler(indices)
+        subset_dataset = Subset(mixed_dataset, indices)
+        dataloader = DataLoader(subset_dataset, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
+        print("dataset length is ", len(dataloader.dataset))
         '''
         t_total = (
             (len(dataloader.dataset) // (self.hparams.train_batch_size * max(1, self.hparams.n_gpu)))
