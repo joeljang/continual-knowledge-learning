@@ -28,6 +28,11 @@ class Pretrain(Dataset):
                     self.dataset = pd.read_csv('data/recent_news_small.csv')
                 elif self.dataset_version=='full':
                     self.dataset = pd.read_csv('data/recent_news_full.csv')
+            elif type_path =='pretrain':
+                if self.dataset_version=='debug':
+                    self.dataset = pd.read_csv('data/wikipedia_pretrain_debug.csv')
+                else:
+                    self.dataset = pd.read_csv('data/wikipedia_pretrain.csv')
             else:
                 self.dataset = self.get_recent_val(-1,-1) #Getting validation data for both LAMA-entity and RecentProbe
         else:
@@ -35,7 +40,7 @@ class Pretrain(Dataset):
         print(f'length of dataset: {len(self.dataset)}')
         if self.args.dataset == 'recentnews' and type_path=='validation':
             self.input_length = 50
-            self.output_length = 4
+            self.output_length = 10
         else:
             self.input_length = input_length
             self.output_length = output_length
@@ -88,9 +93,9 @@ class Pretrain(Dataset):
         return source, targets
   
     def __getitem__(self, index):
-        if self.type_path=='train':
+        if self.type_path=='train' or self.type_path=='pretrain':
             source, targets = self.convert_to_features(self.dataset.iloc[index])
-        else:
+        else:      
             source, targets = self.convert_to_features(self.dataset[index])
         
         source_ids = source["input_ids"].squeeze()
