@@ -154,10 +154,10 @@ class AdapterModel(nn.Module):
 class T5FineTuner(pl.LightningModule):
     def __init__(self, hparams):
         super(T5FineTuner, self).__init__()
+        self.save_hyperparameters(hparams)
         self.config = T5Config.from_pretrained(hparams.model_name_or_path)
         self.adapter = AdapterModel(self.config)
         self.concat_dense = nn.Linear(self.config.d_model + self.config.d_model, self.config.d_model)
-        self.hparams = hparams
         self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.criterion = nn.CrossEntropyLoss()
         self.softmax = nn.Softmax(2)
@@ -725,8 +725,12 @@ class T5FineTuner(pl.LightningModule):
         em_score = torch.tensor(em_score,dtype=torch.float32)
         subset_match_score = torch.tensor(subset_match_score,dtype=torch.float32)
         #bleu_score = torch.tensor(bleu_score,dtype=torch.float32)
+        if self.hparams.dataset_version=='debug':
+            lama_len = 1202
+        else:
+            lama_len = 20725
         if self.hparams.dataset=='recentnews':
-            if val_num < 20720:
+            if val_num < lama_len:
                 self.log('lama_em_score', em_score, prog_bar=True, logger=True)
                 self.log('lama_subset_match_score', subset_match_score, prog_bar=True, logger=True)
             else:
@@ -768,7 +772,7 @@ class T5FineTuner(pl.LightningModule):
         self.opt = optimizer
         len_data = len(self.train_dataloader())
         denomniator = self.hparams.n_gpu
-        steps_per_epoch = len_data // denomniator
+        steps_per_epoch = ( len_data // denomniator ) + 1
         lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
 
         if self.hparams.use_lr_scheduling:

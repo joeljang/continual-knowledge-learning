@@ -15,6 +15,7 @@ from transformers import (
 from torch.utils.data import DataLoader
 from models import load_model
 from datasets import Pretrain
+from pytorch_lightning.plugins import DeepSpeedPlugin
 
 def set_seed(seed):
     random.seed(seed)
@@ -41,7 +42,7 @@ if __name__ == '__main__':
 
     #Logging into WANDB if needed
     if hparam.wandb_log:
-        wandb_logger = WandbLogger(project=hparam.wandb_project, name=hparam.wandb_run_name)
+        wandb_logger = WandbLogger(project=hparam.wandb_project, name=hparam.wandb_run_name, entity="lklab_kaist")
     else:
         wandb_logger = None
 
@@ -49,6 +50,7 @@ if __name__ == '__main__':
     args_dict = dict(
         output_dir=hparam.output_dir, # Path to save the checkpoints
         dataset=hparam.dataset,
+        dataset_version = hparam.dataset_version,
         model_name_or_path=hparam.model,
         model_type=hparam.model_type,
         mode=hparam.mode,
@@ -74,9 +76,10 @@ if __name__ == '__main__':
         n_train=-1,
         n_test=-1,
         early_stop_callback=False,
-        fp_16=False, # if you want to enable 16-bit training then install apex and set this to true
+        fp_16=hparam.fp_16, # if you want to enable 16-bit training then install apex and set this to true
+        plugins=hparam.plugins,
         opt_level='O1', # you can find out more on optimisation levels here https://nvidia.github.io/apex/amp.html#opt-levels-and-properties
-        max_grad_norm=1.0, # if you enable 16-bit training then set this to a sensible value, 0.5 is a good default
+        max_grad_norm=0.5, # if you enable 16-bit training then set this to a sensible value, 0.5 is a good default
         seed=42,
         check_validation_only=hparam.check_validation,
         checkpoint_path=hparam.checkpoint_path,
@@ -106,7 +109,7 @@ if __name__ == '__main__':
     # Setting Flags for pytorch lightning trainer. Details: https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#trainer-flags
     train_params = dict(
         accumulate_grad_batches=args.gradient_accumulation_steps,
-        plugins=pl.plugins.DDPPlugin(find_unused_parameters=True),
+        #plugins=args.plugins,
         gpus=args.n_gpu,
         max_epochs=args.num_train_epochs,
         precision= 16 if args.fp_16 else 32,

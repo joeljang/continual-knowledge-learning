@@ -27,12 +27,12 @@ class Pretrain(Dataset):
                 elif self.dataset_version=='small':
                     self.dataset = pd.read_csv('data/recent_news_small.csv')
                 elif self.dataset_version=='full':
-                    self.dataset = pd.read_csv('data/recent_news_200000.csv')
+                    self.dataset = pd.read_csv('data/recent_news_full.csv')
             elif type_path =='pretrain':
                 if self.dataset_version=='debug':
-                    self.dataset = pd.read_csv('/mnt/nfs/seonghyeon/wikipedia_pretrain_debug.csv')
+                    self.dataset = pd.read_csv('data/wikipedia_pretrain_debug.csv')
                 else:
-                    self.dataset = pd.read_csv('/mnt/nfs/seonghyeon/wikipedia_pretrain.csv')
+                    self.dataset = pd.read_csv('data/wikipedia_pretrain.csv')
             else:
                 self.dataset = self.get_recent_val(-1,-1) #Getting validation data for both LAMA-entity and RecentProbe
         else:
@@ -40,7 +40,7 @@ class Pretrain(Dataset):
         print(f'length of dataset: {len(self.dataset)}')
         if self.args.dataset == 'recentnews' and type_path=='validation':
             self.input_length = 50
-            self.output_length = 4
+            self.output_length = 10
         else:
             self.input_length = input_length
             self.output_length = output_length
@@ -57,7 +57,7 @@ class Pretrain(Dataset):
             recent = pd.read_csv('data/recentprobe_m_small.csv')
             lama = pd.read_csv('data/lama_template.csv')
         elif self.dataset_version=='full':
-            recent = pd.read_csv('data/recent_news_summary_6000.csv')
+            recent = pd.read_csv('data/recentprobe_m_full.csv')
             lama = pd.read_csv('data/lama_template.csv')
         dataset = []
         for index, row in lama.iterrows():
