@@ -10,7 +10,7 @@ from transformers import (
 import torch
 from datasets import Pretrain
 from torch.utils.data import RandomSampler, SubsetRandomSampler
-from torch.utils.data import Dataset, DataLoader, ConcatDataset
+from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
 
 import argparse
 import time
@@ -285,13 +285,14 @@ class T5FineTuner(pl.LightningModule):
         train_len = len(train_dataset)
         mix_len = int(len(train_dataset) * self.mix_ratio * (self.mix_decay ** self.epoch))
         pretrain_indices = [a+train_len for a in random.sample(range(0,len(pretrain_dataset)),len(pretrain_dataset))[:mix_len]]
-        # print("mix len is ", mix_len)
+        print("mix len is ", mix_len)
         train_indices = list(range(train_len))
         indices = train_indices + pretrain_indices
         # print("final len is ", indices)
-        sampler = SubsetRandomSampler(indices)
-        dataloader = DataLoader(mixed_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
-        # print("dataset length is ", len(dataloader.dataset))
+        # sampler = SubsetRandomSampler(indices)
+        subset_dataset = Subset(mixed_dataset, indices)
+        dataloader = DataLoader(subset_dataset, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
+        print("dataset length is ", len(dataloader.dataset))
         '''
         t_total = (
             (len(dataloader.dataset) // (self.hparams.train_batch_size * max(1, self.hparams.n_gpu)))
