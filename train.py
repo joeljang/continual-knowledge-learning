@@ -42,7 +42,7 @@ if __name__ == '__main__':
 
     #Logging into WANDB if needed
     if hparam.wandb_log:
-        wandb_logger = WandbLogger(project=hparam.wandb_project, name=hparam.wandb_run_name)
+        wandb_logger = WandbLogger(project=hparam.wandb_project, name=hparam.wandb_run_name, entity="lklab_kaist")
     else:
         wandb_logger = None
 
@@ -90,7 +90,7 @@ if __name__ == '__main__':
     # Defining how to save model checkpoints during training. Details: https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.model_checkpoint.html 
     if args.mode == 'pretrain':
         checkpoint_callback = pl.callbacks.ModelCheckpoint(
-            dirpath = args.output_dir, save_top_k=0, save_last=True
+            dirpath = args.output_dir, save_last=True
         )
     else:
         checkpoint_callback = pl.callbacks.ModelCheckpoint(
@@ -109,7 +109,7 @@ if __name__ == '__main__':
     # Setting Flags for pytorch lightning trainer. Details: https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#trainer-flags
     train_params = dict(
         accumulate_grad_batches=args.gradient_accumulation_steps,
-        plugins=args.plugins,
+        #plugins=args.plugins,
         gpus=args.n_gpu,
         max_epochs=args.num_train_epochs,
         precision= 16 if args.fp_16 else 32,

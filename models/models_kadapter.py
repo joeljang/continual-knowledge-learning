@@ -27,6 +27,7 @@ import numpy as np
 import string
 from string import punctuation
 from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu, sentence_bleu
+from .modeling_bert import BertEncoder
 
 class GreedySearchDecoderOnlyOutput(ModelOutput):
     sequences: torch.LongTensor = None
@@ -63,8 +64,9 @@ class Adapter(nn.Module):
         input_shape = down_projected.size()[:-1]
         #attention_mask = torch.ones(input_shape, device=self.args.device)
         #encoder_attention_mask = torch.ones(input_shape, device=self.args.device)
-        attention_mask = torch.ones(input_shape)
-        encoder_attention_mask = torch.ones(input_shape)
+        device = 'cuda:'+str(hidden_states.get_device())
+        attention_mask = torch.ones(input_shape, device=device)
+        encoder_attention_mask = torch.ones(input_shape, device=device)
         if attention_mask.dim() == 3:
             extended_attention_mask = attention_mask[:, None, :, :]
         if attention_mask.dim() == 2:
@@ -86,21 +88,22 @@ class Adapter(nn.Module):
         return hidden_states + up_projected
 
 class AdapterModel(nn.Module):
-    def __init__(self, pretrained_config):
+    def __init__(self, pretrained_config, device):
         super(AdapterModel, self).__init__()
         self.config = pretrained_config
+        self.device = device
         #self.config = pretrained_model_config
         class Args:
             fusion_mode: str = 'concat' #can be 'add' as well
             adapter_transformer_layers: int=2
             adapter_size: int=768
             adapter_skip_layers: int=0
-            adapter_list: str='0,11,23'
+            adapter_list: str='1,12,24'
 
         self.args = Args
-        self.args.adapter_list = args.adapter_list.split(',')
-        self.args.adapter_list = [int(i) for i in args.adapter_list]
-        self.adapter_size = args.adapter_size
+        self.args.adapter_list = self.args.adapter_list.split(',')
+        self.args.adapter_list = [int(i) for i in self.args.adapter_list]
+        self.adapter_size = self.args.adapter_size
         class AdapterConfig:
             project_hidden_size: int = self.config.d_model
             hidden_act: str = "gelu"
@@ -125,7 +128,7 @@ class AdapterModel(nn.Module):
 
         self.adapter_config = AdapterConfig
         self.adapter_skip_layers = self.args.adapter_skip_layers
-        self.adapter_list = args.adapter_list
+        self.adapter_list = self.args.adapter_list
         self.adapter_num = len(self.adapter_list)
         self.adapter = nn.ModuleList([Adapter(AdapterConfig) for _ in range(self.adapter_num)])
 
@@ -133,10 +136,11 @@ class AdapterModel(nn.Module):
         outputs = pretrained_model_outputs
         sequence_output = outputs[0]
         # pooler_output = outputs[1]
-        hidden_states = outputs[2]
-        num = len(hidden_states)
-        #hidden_states_last = torch.zeros(sequence_output.size()).to(self.args.device)
-        hidden_states_last = torch.zeros(sequence_output.size())
+        #hidden_states = outputs[2]
+        hidden_states = outputs.hidden_states
+        device = 'cuda:'+str(sequence_output.get_device())
+        hidden_states_last = torch.zeros(sequence_output.size(), device=device)
+        #hidden_states_last = torch.zeros(sequence_output.size())
 
         adapter_hidden_states = []
         adapter_hidden_states_count = 0
@@ -148,7 +152,8 @@ class AdapterModel(nn.Module):
             if self.adapter_skip_layers >= 1:
                 if adapter_hidden_states_count % self.adapter_skip_layers == 0:
                     hidden_states_last = hidden_states_last + adapter_hidden_states[int(adapter_hidden_states_count/self.adapter_skip_layers)]
-        outputs = (hidden_states_last,) + outputs[2:]
+        #outputs = (hidden_states_last,) + outputs[2:]
+        outputs = hidden_states_last
         return outputs  # (loss), logits, (hidden_states), (attentions)
 
 class T5FineTuner(pl.LightningModule):
@@ -156,8 +161,7 @@ class T5FineTuner(pl.LightningModule):
         super(T5FineTuner, self).__init__()
         self.save_hyperparameters(hparams)
         self.config = T5Config.from_pretrained(hparams.model_name_or_path)
-        self.adapter = AdapterModel(self.config)
-        self.concat_dense = nn.Linear(self.config.d_model + self.config.d_model, self.config.d_model)
+        self.adapter = AdapterModel(self.config, self.device)
         self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.criterion = nn.CrossEntropyLoss()
         self.softmax = nn.Softmax(2)
@@ -166,7 +170,6 @@ class T5FineTuner(pl.LightningModule):
         if self.hparams.freeze_embeds:
             self.freeze_embeds()
         self.freeze_params(self.model.get_encoder())
-        assert_all_frozen(self.model.get_encoder())
 
         self.step_count = 0
         self.output_dir = self.hparams.output_dir
@@ -304,14 +307,16 @@ class T5FineTuner(pl.LightningModule):
             inputs_embeds=inputs_embeds,
             head_mask=head_mask,
             output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
+            output_hidden_states=True,
             return_dict=return_dict,
         )
 
-        pretrained_model_last_hidden_states = encoder_outputs[0] # original roberta output
+        combine_features = encoder_outputs[0] # original t5 output
         adapter_outputs = self.adapter(encoder_outputs)
-        combine_features = pretrained_model_last_hidden_states
-        hidden_states = self.concat_dense(torch.cat([combine_features, adapter_outputs], dim=2))
+        #hidden_states = adapter_outputs[0] + combine_features
+        #hidden_states = combine_features
+        #hidden_states = adapter_outputs[0]
+        hidden_states = adapter_outputs
 
         if self.model.model_parallel:
             torch.cuda.set_device(self.model.decoder.first_device)
@@ -785,17 +790,6 @@ class T5FineTuner(pl.LightningModule):
         train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
         sampler=RandomSampler(train_dataset)
         dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
-        '''
-        t_total = (
-            (len(dataloader.dataset) // (self.hparams.train_batch_size * max(1, self.hparams.n_gpu)))
-            // self.hparams.gradient_accumulation_steps
-            * float(self.hparams.num_train_epochs)
-        )
-        scheduler = get_linear_schedule_with_warmup(
-            self.opt, num_warmup_steps=int(0.1 * t_total) , num_training_steps=t_total
-        )
-        self.lr_scheduler = scheduler
-        '''
         return dataloader
 
     def val_dataloader(self):
