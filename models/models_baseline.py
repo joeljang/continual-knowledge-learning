@@ -183,6 +183,7 @@ class T5FineTuner(pl.LightningModule):
     def _generative_step(self, batch, batch_idx):
         
         val_num = batch_idx * len(batch["source_ids"]) * self.hparams.n_gpu #For 2 val logs
+        print(val_num)
         t0 = time.time()
         
         generated_ids = self.model.generate(
