@@ -268,7 +268,7 @@ class T5FineTuner(pl.LightningModule):
                              relative_step=False)
         self.opt = optimizer
         len_data = len(self.train_dataloader())
-        denomniator = self.hparams.n_gpu
+        denomniator = self.hparams.n_gpu * self.hparams.gradient_accumulation_steps
         steps_per_epoch = len_data // denomniator
         lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
 
