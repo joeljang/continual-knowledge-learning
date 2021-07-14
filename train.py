@@ -76,8 +76,7 @@ if __name__ == '__main__':
         n_train=-1,
         n_test=-1,
         early_stop_callback=False,
-        fp_16=hparam.fp_16, # if you want to enable 16-bit training then install apex and set this to true
-        plugins=hparam.plugins,
+        use_deepspeed=hparam.use_deepspeed,
         opt_level='O1', # you can find out more on optimisation levels here https://nvidia.github.io/apex/amp.html#opt-levels-and-properties
         max_grad_norm=0.5, # if you enable 16-bit training then set this to a sensible value, 0.5 is a good default
         seed=42,
@@ -105,14 +104,20 @@ if __name__ == '__main__':
         lr_monitor = [pl.callbacks.LearningRateMonitor()]
     else:
         lr_monitor = []
+    if args.use_deepspeed:
+        plugins = 'deepspeed_stage_2'
+        use_fp_16 = True
+    else:
+        plugins = []
+        use_fp_16 = False
 
     # Setting Flags for pytorch lightning trainer. Details: https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#trainer-flags
     train_params = dict(
         accumulate_grad_batches=args.gradient_accumulation_steps,
-        #plugins=args.plugins,
+        plugins=plugins,
         gpus=args.n_gpu,
         max_epochs=args.num_train_epochs,
-        precision= 16 if args.fp_16 else 32,
+        precision= 16 if use_fp_16 else 32,
         amp_level=args.opt_level,
         resume_from_checkpoint=args.resume_from_checkpoint,
         gradient_clip_val=args.max_grad_norm,
