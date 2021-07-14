@@ -15,7 +15,7 @@ from transformers import (
 from torch.utils.data import DataLoader
 from models import load_model
 from datasets import Pretrain
-from pytorch_lightning.plugins import DeepSpeedPlugin
+from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 
 def set_seed(seed):
     random.seed(seed)
@@ -87,23 +87,17 @@ if __name__ == '__main__':
     args = argparse.Namespace(**args_dict)
 
     # Defining how to save model checkpoints during training. Details: https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.model_checkpoint.html 
-    if args.mode == 'pretrain':
-        checkpoint_callback = pl.callbacks.ModelCheckpoint(
-            dirpath = args.output_dir, save_last=True
-        )
-    else:
-        checkpoint_callback = pl.callbacks.ModelCheckpoint(
-            dirpath = args.output_dir, monitor="em_score", mode="max", save_top_k=1
-        )
+    callbacks = [ModelCheckpoint(dirpath = args.output_dir)]
+    checkpoint_callback = True
 
     if args.output_dir=="":
         checkpoint_callback = False # Do not save model checkpoints when output dir is empty
+        callbacks=[]
 
     # Logging Learning Rate Scheduling
     if args.use_lr_scheduling and hparam.wandb_log:
-        lr_monitor = [pl.callbacks.LearningRateMonitor()]
-    else:
-        lr_monitor = []
+        callbacks.append(pl.callbacks.LearningRateMonitor())
+
     if args.use_deepspeed:
         plugins = 'deepspeed_stage_2'
         use_fp_16 = True
@@ -124,7 +118,7 @@ if __name__ == '__main__':
         checkpoint_callback=checkpoint_callback,
         val_check_interval=args.val_check_interval,
         logger=wandb_logger,
-        callbacks = lr_monitor,
+        callbacks = callbacks,
         accelerator=args.accelerator,
     )
 

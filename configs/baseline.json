@@ -1,7 +1,7 @@
 {
     "input_length" : 350,
     "output_length" : 350,
-    "num_train_epochs" : 8,
+    "num_train_epochs" : 1,
     "output_dir" : "outputs/T5_large_recentnews(debug)_lr.001_baseline",
     "dataset" : "recentnews",
     "dataset_version" : "debug",
@@ -16,11 +16,11 @@
     "accelerator" : "ddp",
     "use_deepspeed" : false,
     "CUDA_VISIBLE_DEVICES" : "0,1",
-    "wandb_log": true,
+    "wandb_log": false,
     "wandb_project": "continual_learning",
     "wandb_run_name" : "T5_large_recentnews(debug)_lr.001_baseline",
     "mode" : "pretrain",
-    "use_lr_scheduling" : true,
+    "use_lr_scheduling" : false,
     "check_validation" : false,
     "checkpoint_path" : ""
 }
