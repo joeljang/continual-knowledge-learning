@@ -3,14 +3,11 @@ from transformers import (
     AdamW,
     Adafactor,
     T5ForConditionalGeneration,
-    T5EncoderModel,
     T5Model,
     T5Tokenizer,
     T5Config,
     get_linear_schedule_with_warmup
 )
-
-from transformers.models.t5.modeling_t5 import T5LayerNorm, T5Block
 import torch
 from datasets import Pretrain
 from torch.utils.data import RandomSampler
@@ -20,7 +17,8 @@ from torch import nn
 from transformers.file_utils import ModelOutput
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 from transformers.generation_logits_process import LogitsProcessorList
-from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPastAndCrossAttentions
+from transformers.modeling_outputs import Seq2SeqLMOutput
+
 
 import argparse
 import time
@@ -47,41 +45,11 @@ class GreedySearchEncoderDecoderOutput(ModelOutput):
 
 GreedySearchOutput = Union[GreedySearchEncoderDecoderOutput, GreedySearchDecoderOnlyOutput]
 
-class AdapterModel(nn.Module):
-    def __init__(self, pretrained_config, device):
-        super(AdapterModel, self).__init__()
-        self.config = pretrained_config
-        self.device = device
-        self.adapter_list = [1,11]
-        self.adapter_num = len(self.adapter_list)
-        self.layer_norm = T5LayerNorm(self.config.d_model, eps=self.config.layer_norm_epsilon)
-        self.adapter = nn.ModuleList(
-            [T5Block(self.config, has_relative_attention_bias=bool(i == 0)) for i in range(self.adapter_num)]
-        )
-
-
-    def forward(self, pretrained_model_outputs):
-        outputs = pretrained_model_outputs
-        sequence_output = outputs[0]
-        hidden_states = outputs.hidden_states
-        device = 'cuda:'+str(sequence_output.get_device())
-        hidden_states_last = torch.zeros(sequence_output.size(), device=device)
-
-        for i, adapter_module in enumerate(self.adapter):
-            pretrained_hidden_state = hidden_states[self.adapter_list[i]]
-            fusion_state = pretrained_hidden_state + hidden_states_last
-            hidden_states_last = adapter_module(fusion_state)[0]
-
-        #outputs = (hidden_states_last,) + outputs[2:]
-        outputs = (0.1 * self.layer_norm(hidden_states_last)) + sequence_output
-        return outputs  # (loss), logits, (hidden_states), (attentions)
-
-class T5FineTuner(pl.LightningModule):
+class T5(pl.LightningModule):
     def __init__(self, hparams):
-        super(T5FineTuner, self).__init__()
+        super(T5, self).__init__()
         self.save_hyperparameters(hparams)
-        self.config = T5Config.from_pretrained(hparams.model_name_or_path)
-        self.adapter = AdapterModel(self.config, self.device)
+        self.module = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.criterion = nn.CrossEntropyLoss()
         self.softmax = nn.Softmax(2)
@@ -89,7 +57,10 @@ class T5FineTuner(pl.LightningModule):
         
         if self.hparams.freeze_embeds:
             self.freeze_embeds()
-        self.freeze_params(self.model.get_encoder())
+        if self.hparams.freeze_encoder:
+            self.freeze_params(self.model.get_encoder())
+            assert_all_frozen(self.model.get_encoder())
+        self.freeze_params(self.module) #Freezing Model
 
         self.step_count = 0
         self.output_dir = self.hparams.output_dir
@@ -159,7 +130,7 @@ class T5FineTuner(pl.LightningModule):
         cc = SmoothingFunction()
         score_bleu = corpus_bleu(ref_bleu, gen_bleu, weights=(0, 1, 0, 0), smoothing_function=cc.method4)
         return score_bleu
-
+        
     def get_dataset(self, tokenizer, type_path, num_samples, args):
         if args.mode == 'pretrain':
             return Pretrain(tokenizer=tokenizer, type_path=type_path, num_samples=num_samples,  input_length=args.max_input_length, 
@@ -227,12 +198,20 @@ class T5FineTuner(pl.LightningModule):
             inputs_embeds=inputs_embeds,
             head_mask=head_mask,
             output_attentions=output_attentions,
-            output_hidden_states=True,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+        encoder_outputs2 = self.module.encoder(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            inputs_embeds=inputs_embeds,
+            head_mask=head_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
 
-        combine_features = encoder_outputs[0] # original t5 output
-        hidden_states = self.adapter(encoder_outputs)
+        hidden_states = encoder_outputs[0] + encoder_outputs2[0]
 
         if self.model.model_parallel:
             torch.cuda.set_device(self.model.decoder.first_device)
@@ -706,6 +685,17 @@ class T5FineTuner(pl.LightningModule):
         train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
         sampler=RandomSampler(train_dataset)
         dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
+        '''
+        t_total = (
+            (len(dataloader.dataset) // (self.hparams.train_batch_size * max(1, self.hparams.n_gpu)))
+            // self.hparams.gradient_accumulation_steps
+            * float(self.hparams.num_train_epochs)
+        )
+        scheduler = get_linear_schedule_with_warmup(
+            self.opt, num_warmup_steps=int(0.1 * t_total) , num_training_steps=t_total
+        )
+        self.lr_scheduler = scheduler
+        '''
         return dataloader
 
     def val_dataloader(self):

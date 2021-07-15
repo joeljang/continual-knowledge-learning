@@ -2,15 +2,14 @@ import pytorch_lightning as pl
 from transformers import (
     AdamW,
     Adafactor,
-    T5ForConditionalGeneration,
-    T5Tokenizer,
-    T5Config,
-    get_linear_schedule_with_warmup
+    GPT2LMHeadModel,
+    GPT2Tokenizer,
 )
+
 import torch
 from datasets import Pretrain
-from torch.utils.data import RandomSampler, SubsetRandomSampler
-from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
+from torch.utils.data import RandomSampler
+from torch.utils.data import Dataset, DataLoader
 
 import argparse
 import time
@@ -20,28 +19,20 @@ import string
 from string import punctuation
 import os
 from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu, sentence_bleu
-import random
 
-class T5FineTuner(pl.LightningModule):
+class GPT2(pl.LightningModule):
     def __init__(self, hparams):
-        super(T5FineTuner, self).__init__()
-        self.hparams = hparams
-        # self.config = T5Config.from_pretrained(hparams.model_name_or_path)
-        # self.model = T5ForConditionalGeneration(self.config)
-        self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
-        self.tokenizer = T5Tokenizer.from_pretrained(hparams.tokenizer_name_or_path)
-
-        self.mix_ratio = 4
-        self.mix_decay = 0.7
-        self.epoch = 0
-        
-        if self.hparams.freeze_embeds:
-            self.freeze_embeds()
-        if self.hparams.freeze_encoder:
-            self.freeze_params(self.model.get_encoder())
-            assert_all_frozen(self.model.get_encoder())
-        
-        self.step_count = 0
+        super(GPT2, self).__init__()
+        self.save_hyperparameters(hparams)
+        self.model = GPT2LMHeadModel.from_pretrained(hparams.model_name_or_path)
+        self.tokenizer = GPT2Tokenizer.from_pretrained(hparams.model_name_or_path)
+        self.tokenizer.add_special_tokens({
+            "eos_token": "</s>",
+            "bos_token": "<s>",
+            "unk_token": "<unk>",
+            "pad_token": "<pad>",
+            "mask_token": "<mask>"
+            })
         self.output_dir = self.hparams.output_dir
             
         n_observations_per_split = {
@@ -159,9 +150,6 @@ class T5FineTuner(pl.LightningModule):
         return self.model(
             input_ids,
             attention_mask=attention_mask,
-            decoder_input_ids=decoder_input_ids,
-            decoder_attention_mask=decoder_attention_mask,
-            labels=lm_labels,
     )
 
     def _step(self, batch):
@@ -194,7 +182,6 @@ class T5FineTuner(pl.LightningModule):
             batch["source_ids"],
             attention_mask=batch["source_mask"],
             use_cache=True,
-            decoder_attention_mask=batch['target_mask'],
             max_length=10,
             num_beams=2,
             early_stopping=True
@@ -239,11 +226,6 @@ class T5FineTuner(pl.LightningModule):
         self.log("loss", loss)
         return loss
 
-    def on_train_epoch_start(self):
-        train_set = self.train_dataloader().dataset
-        # print("incrementing epoch")
-        self.epoch+=1
-
     def validation_step(self, batch, batch_idx):
         return self._generative_step(batch, batch_idx)
 
@@ -264,12 +246,12 @@ class T5FineTuner(pl.LightningModule):
         ]
         
         #optimizer = AdamW(optimizer_grouped_parameters, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon)
-        optimizer = Adafactor(optimizer_grouped_parameters, lr=self.hparams.learning_rate, scale_parameter=False,
-                             relative_step=False)
-        self.opt = optimizer
+        optimizer = Adafactor(optimizer_grouped_parameters, lr=self.hparams.learning_rate, scale_parameter=False, relative_step=False)
+
+        self.optimizer = optimizer
         len_data = len(self.train_dataloader())
         denomniator = self.hparams.n_gpu * self.hparams.gradient_accumulation_steps
-        steps_per_epoch = len_data // denomniator
+        steps_per_epoch = ( len_data // denomniator ) + 1
         lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
 
         if self.hparams.use_lr_scheduling:
@@ -280,30 +262,8 @@ class T5FineTuner(pl.LightningModule):
     def train_dataloader(self):   
         n_samples = self.n_obs['train']
         train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
-        pretrain_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="pretrain", num_samples=n_samples, args=self.hparams)
-        mixed_dataset = ConcatDataset([train_dataset,pretrain_dataset])
-        train_len = len(train_dataset)
-        mix_len = int(len(train_dataset) * self.mix_ratio * (self.mix_decay ** self.epoch))
-        pretrain_indices = [a+train_len for a in random.sample(range(0,len(pretrain_dataset)),len(pretrain_dataset))[:mix_len]]
-        print("mix len is ", mix_len)
-        train_indices = list(range(train_len))
-        indices = train_indices + pretrain_indices
-        # print("final len is ", indices)
-        # sampler = SubsetRandomSampler(indices)
-        subset_dataset = Subset(mixed_dataset, indices)
-        dataloader = DataLoader(subset_dataset, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
-        print("dataset length is ", len(dataloader.dataset))
-        '''
-        t_total = (
-            (len(dataloader.dataset) // (self.hparams.train_batch_size * max(1, self.hparams.n_gpu)))
-            // self.hparams.gradient_accumulation_steps
-            * float(self.hparams.num_train_epochs)
-        )
-        scheduler = get_linear_schedule_with_warmup(
-            self.opt, num_warmup_steps=int(0.1 * t_total) , num_training_steps=t_total
-        )
-        self.lr_scheduler = scheduler
-        '''
+        sampler=RandomSampler(train_dataset)
+        dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
         return dataloader
 
     def val_dataloader(self):

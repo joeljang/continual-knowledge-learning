@@ -22,9 +22,9 @@ from string import punctuation
 import os
 from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu, sentence_bleu
 
-class T5FineTuner(pl.LightningModule):
+class T5(pl.LightningModule):
     def __init__(self, hparams):
-        super(T5FineTuner, self).__init__()
+        super(T5, self).__init__()
         self.save_hyperparameters(hparams)
         #self.config = T5Config.from_pretrained(hparams.model_name_or_path)
         #self.model = T5ForConditionalGeneration(self.config)

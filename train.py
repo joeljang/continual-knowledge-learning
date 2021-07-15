@@ -52,7 +52,7 @@ if __name__ == '__main__':
         dataset=hparam.dataset,
         dataset_version = hparam.dataset_version,
         model_name_or_path=hparam.model,
-        model_type=hparam.model_type,
+        method=hparam.method,
         mode=hparam.mode,
         tokenizer_name_or_path=hparam.model,
         max_input_length=hparam.input_length,
@@ -122,8 +122,14 @@ if __name__ == '__main__':
         accelerator=args.accelerator,
     )
 
-    #Getting the Model type
-    T5Model = load_model(args.model_type)
+    #Getting the Model type & Method
+    if 't5' in args.model_name_or_path:
+        model_type='T5'
+    elif 'gpt2' in args.model_name_or_path:
+        model_type='GPT2'
+    else:
+        raise Exception('Select the correct model. Supporting "t5" and "gpt2" only.')
+    T5Model = load_model(name=args.method, type=model_type)
     
     if args.check_validation_only:
         model = T5Model(args)

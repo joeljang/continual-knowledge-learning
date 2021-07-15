@@ -46,9 +46,9 @@ class GreedySearchEncoderDecoderOutput(ModelOutput):
 
 GreedySearchOutput = Union[GreedySearchEncoderDecoderOutput, GreedySearchDecoderOnlyOutput]
 
-class T5FineTuner(pl.LightningModule):
+class T5(pl.LightningModule):
     def __init__(self, hparams):
-        super(T5FineTuner, self).__init__()
+        super(T5, self).__init__()
         self.save_hyperparameters(hparams)
         self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.module = T5EncoderModel.from_pretrained('google/t5-small-ssm')
