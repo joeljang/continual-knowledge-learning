@@ -4,6 +4,7 @@ from models.t5_modular_small import T5 as T5_Modular_Small
 from models.t5_adapters import T5 as T5_adapter
 from models.t5_recadam import T5 as T5_Recadam
 from models.t5_mixreview import T5 as T5_MixReview
+from models.t5_modular_layerwise import T5 as T5_Modular_LW
 
 from models.gpt2_baseline import GPT2 as GPT2_Baseline
 
@@ -14,6 +15,7 @@ T5_MODELS = {
     'models_adapter': T5_adapter,
     'models_recadam': T5_Recadam,
     'models_mixreview': T5_MixReview,
+    'models_modular_lw' : T5_Modular_LW
 }
 
 GPT2_MODELS = {
