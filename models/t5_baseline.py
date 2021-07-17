@@ -192,7 +192,7 @@ class T5(pl.LightningModule):
             num_beams=2,
             early_stopping=True
         )
-
+        
         preds = self.ids_to_clean_text(generated_ids)
         targets = self.ids_to_clean_text(batch["target_ids"])
             
