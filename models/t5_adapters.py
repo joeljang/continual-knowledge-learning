@@ -72,13 +72,8 @@ class AdapterModel(nn.Module):
             fusion_state = pretrained_hidden_state + hidden_states_last
             hidden_states_last = adapter_module(fusion_state)[0]
 
-<<<<<<< HEAD:models/models_kadapter.py
-        #outputs = (hidden_states_last,) + outputs[2:]
-        outputs = (0.1 * self.layer_norm(hidden_states_last)) + sequence_output
-=======
         scale_factor = 0.1
         outputs = (scale_factor * self.layer_norm(hidden_states_last)) + sequence_output
->>>>>>> 741d90cb4b60e453cd6ced8b1bf0a99b0548b723:models/t5_adapters.py
         return outputs  # (loss), logits, (hidden_states), (attentions)
 
 class T5(pl.LightningModule):

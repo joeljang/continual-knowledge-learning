@@ -87,19 +87,8 @@ if __name__ == '__main__':
     args = argparse.Namespace(**args_dict)
 
     # Defining how to save model checkpoints during training. Details: https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.model_checkpoint.html 
-<<<<<<< HEAD
-    if args.mode == 'pretrain':
-        checkpoint_callback = pl.callbacks.ModelCheckpoint(
-            dirpath = args.output_dir, save_last=True
-        )
-    else:
-        checkpoint_callback = pl.callbacks.ModelCheckpoint(
-            dirpath = args.output_dir, monitor="em_score", mode="max", save_top_k=1
-        )
-=======
     callbacks = [ModelCheckpoint(dirpath = args.output_dir)]
     checkpoint_callback = True
->>>>>>> 741d90cb4b60e453cd6ced8b1bf0a99b0548b723
 
     if args.output_dir=="":
         checkpoint_callback = False # Do not save model checkpoints when output dir is empty

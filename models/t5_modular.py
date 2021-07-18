@@ -49,7 +49,7 @@ class T5(pl.LightningModule):
     def __init__(self, hparams):
         super(T5, self).__init__()
         self.save_hyperparameters(hparams)
-        self.module = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
+        self.module = T5EncoderModel.from_pretrained(hparams.model_name_or_path)
         self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.criterion = nn.CrossEntropyLoss()
         self.softmax = nn.Softmax(2)
@@ -60,7 +60,7 @@ class T5(pl.LightningModule):
         if self.hparams.freeze_encoder:
             self.freeze_params(self.model.get_encoder())
             assert_all_frozen(self.model.get_encoder())
-        self.freeze_params(self.module) #Freezing Model
+        self.freeze_params(self.model.get_encoder()) #Freezing Model
 
         self.step_count = 0
         self.output_dir = self.hparams.output_dir

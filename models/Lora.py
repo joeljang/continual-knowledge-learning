@@ -31,7 +31,7 @@ from transformers.file_utils import (
     DUMMY_MASK,
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
-    is_torch_fx_proxy,
+    #is_torch_fx_proxy,
     replace_return_docstrings,
 )
 from transformers.modeling_outputs import (
