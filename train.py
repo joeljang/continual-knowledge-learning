@@ -15,7 +15,7 @@ from transformers import (
 from torch.utils.data import DataLoader
 from models import load_model
 from datasets import Pretrain
-from pytorch_lightning.plugins import DeepSpeedPlugin
+from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 
 def set_seed(seed):
     random.seed(seed)
@@ -52,7 +52,7 @@ if __name__ == '__main__':
         dataset=hparam.dataset,
         dataset_version = hparam.dataset_version,
         model_name_or_path=hparam.model,
-        model_type=hparam.model_type,
+        method=hparam.method,
         mode=hparam.mode,
         tokenizer_name_or_path=hparam.model,
         max_input_length=hparam.input_length,
@@ -76,8 +76,7 @@ if __name__ == '__main__':
         n_train=-1,
         n_test=-1,
         early_stop_callback=False,
-        fp_16=hparam.fp_16, # if you want to enable 16-bit training then install apex and set this to true
-        plugins=hparam.plugins,
+        use_deepspeed=hparam.use_deepspeed,
         opt_level='O1', # you can find out more on optimisation levels here https://nvidia.github.io/apex/amp.html#opt-levels-and-properties
         max_grad_norm=0.5, # if you enable 16-bit training then set this to a sensible value, 0.5 is a good default
         seed=42,
@@ -88,6 +87,7 @@ if __name__ == '__main__':
     args = argparse.Namespace(**args_dict)
 
     # Defining how to save model checkpoints during training. Details: https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.model_checkpoint.html 
+<<<<<<< HEAD
     if args.mode == 'pretrain':
         checkpoint_callback = pl.callbacks.ModelCheckpoint(
             dirpath = args.output_dir, save_last=True
@@ -96,35 +96,51 @@ if __name__ == '__main__':
         checkpoint_callback = pl.callbacks.ModelCheckpoint(
             dirpath = args.output_dir, monitor="em_score", mode="max", save_top_k=1
         )
+=======
+    callbacks = [ModelCheckpoint(dirpath = args.output_dir)]
+    checkpoint_callback = True
+>>>>>>> 741d90cb4b60e453cd6ced8b1bf0a99b0548b723
 
     if args.output_dir=="":
         checkpoint_callback = False # Do not save model checkpoints when output dir is empty
+        callbacks=[]
 
     # Logging Learning Rate Scheduling
     if args.use_lr_scheduling and hparam.wandb_log:
-        lr_monitor = [pl.callbacks.LearningRateMonitor()]
+        callbacks.append(pl.callbacks.LearningRateMonitor())
+
+    if args.use_deepspeed:
+        plugins = 'deepspeed_stage_2'
+        use_fp_16 = True
     else:
-        lr_monitor = []
+        plugins = []
+        use_fp_16 = False
 
     # Setting Flags for pytorch lightning trainer. Details: https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#trainer-flags
     train_params = dict(
         accumulate_grad_batches=args.gradient_accumulation_steps,
-        #plugins=args.plugins,
+        plugins=plugins,
         gpus=args.n_gpu,
         max_epochs=args.num_train_epochs,
-        precision= 16 if args.fp_16 else 32,
+        precision= 16 if use_fp_16 else 32,
         amp_level=args.opt_level,
         resume_from_checkpoint=args.resume_from_checkpoint,
         gradient_clip_val=args.max_grad_norm,
         checkpoint_callback=checkpoint_callback,
         val_check_interval=args.val_check_interval,
         logger=wandb_logger,
-        callbacks = lr_monitor,
+        callbacks = callbacks,
         accelerator=args.accelerator,
     )
 
-    #Getting the Model type
-    T5Model = load_model(args.model_type)
+    #Getting the Model type & Method
+    if 't5' in args.model_name_or_path:
+        model_type='T5'
+    elif 'gpt2' in args.model_name_or_path:
+        model_type='GPT2'
+    else:
+        raise Exception('Select the correct model. Supporting "t5" and "gpt2" only.')
+    T5Model = load_model(name=args.method, type=model_type)
     
     if args.check_validation_only:
         model = T5Model(args)

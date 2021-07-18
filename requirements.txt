@@ -8,3 +8,4 @@ wandb
 nltk
 google-cloud-storage
 deepspeed
+boto3

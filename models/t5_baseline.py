@@ -11,7 +11,6 @@ import torch
 from datasets import Pretrain
 from torch.utils.data import RandomSampler
 from torch.utils.data import Dataset, DataLoader
-from models.RecAdam import RecAdam, anneal_function
 
 import argparse
 import time
@@ -22,14 +21,11 @@ from string import punctuation
 import os
 from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu, sentence_bleu
 
-class T5FineTuner(pl.LightningModule):
+class T5(pl.LightningModule):
     def __init__(self, hparams):
-        super(T5FineTuner, self).__init__()
+        super(T5, self).__init__()
         self.save_hyperparameters(hparams)
-        #self.config = T5Config.from_pretrained(hparams.model_name_or_path)
-        #self.model = T5ForConditionalGeneration(self.config)
         self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
-        self.pretrained_model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.tokenizer = T5Tokenizer.from_pretrained(hparams.tokenizer_name_or_path)
         
         if self.hparams.freeze_embeds:
@@ -37,8 +33,6 @@ class T5FineTuner(pl.LightningModule):
         if self.hparams.freeze_encoder:
             self.freeze_params(self.model.get_encoder())
             assert_all_frozen(self.model.get_encoder())
-        
-        self.freeze_params(self.pretrained_model) #Freezing pretrained model
         
         self.step_count = 0
         self.output_dir = self.hparams.output_dir
@@ -198,7 +192,7 @@ class T5FineTuner(pl.LightningModule):
             num_beams=2,
             early_stopping=True
         )
-
+        
         preds = self.ids_to_clean_text(generated_ids)
         targets = self.ids_to_clean_text(batch["target_ids"])
             
@@ -243,7 +237,7 @@ class T5FineTuner(pl.LightningModule):
 
     def configure_optimizers(self):
         "Prepare optimizer and schedule (linear warmup and decay)"
-        '''
+
         model = self.model
         no_decay = ["bias", "LayerNorm.weight"]
         optimizer_grouped_parameters = [
@@ -258,61 +252,11 @@ class T5FineTuner(pl.LightningModule):
         ]
         
         #optimizer = AdamW(optimizer_grouped_parameters, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon)
-        optimizer = Adafactor(optimizer_grouped_parameters, lr=self.hparams.learning_rate, scale_parameter=False,
-                             relative_step=False)
-        '''
-        # Prepare for the grouped parameters for RecAdam optimizer.
-        # Since the classifier layer is not pretrained, it is not penalized during optimization.
-        no_decay = ["bias", "LayerNorm.weight"]
-        model_type = 't5'
-        recadam_anneal_w = 1.0
-        recadam_anneal_fun = 'sigmoid'
-        recadam_anneal_k = 0.5
-        recadam_anneal_t0 = 250
-        recadam_pretrain_cof = 5000.0
-        new_model = self.model
-        pretrained_model = self.pretrained_model
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in new_model.named_parameters() if
-                           not any(nd in n for nd in no_decay) and model_type in n],
-                "weight_decay": self.hparams.weight_decay,
-                "anneal_w": recadam_anneal_w,
-                "pretrain_params": [p_p for p_n, p_p in pretrained_model.named_parameters() if
-                                    not any(nd in p_n for nd in no_decay) and model_type in p_n]
-            },
-            {
-                "params": [p for n, p in new_model.named_parameters() if
-                           not any(nd in n for nd in no_decay) and model_type not in n],
-                "weight_decay": self.hparams.weight_decay,
-                "anneal_w": 0.0,
-                "pretrain_params": [p_p for p_n, p_p in pretrained_model.named_parameters() if
-                                    not any(nd in p_n for nd in no_decay) and model_type not in p_n]
-            },
-            {
-                "params": [p for n, p in new_model.named_parameters() if
-                           any(nd in n for nd in no_decay) and model_type in n],
-                "weight_decay": 0.0,
-                "anneal_w": recadam_anneal_w,
-                "pretrain_params": [p_p for p_n, p_p in pretrained_model.named_parameters() if
-                                    any(nd in p_n for nd in no_decay) and model_type in p_n]
-            },
-            {
-                "params": [p for n, p in new_model.named_parameters() if
-                           any(nd in n for nd in no_decay) and model_type not in n],
-                "weight_decay": 0.0,
-                "anneal_w": 0.0,
-                "pretrain_params": [p_p for p_n, p_p in pretrained_model.named_parameters() if
-                                    any(nd in p_n for nd in no_decay) and model_type not in p_n]
-            }
-        ]
-        optimizer = RecAdam(optimizer_grouped_parameters, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon,
-                            anneal_fun=recadam_anneal_fun, anneal_k=recadam_anneal_k,
-                            anneal_t0=recadam_anneal_t0, pretrain_cof=recadam_pretrain_cof)
+        optimizer = Adafactor(optimizer_grouped_parameters, lr=self.hparams.learning_rate, scale_parameter=False, relative_step=False)
 
-        self.opt = optimizer
+        self.optimizer = optimizer
         len_data = len(self.train_dataloader())
-        denomniator = self.hparams.n_gpu
+        denomniator = self.hparams.n_gpu * self.hparams.gradient_accumulation_steps
         steps_per_epoch = ( len_data // denomniator ) + 1
         lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
 
@@ -326,17 +270,6 @@ class T5FineTuner(pl.LightningModule):
         train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
         sampler=RandomSampler(train_dataset)
         dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
-        '''
-        t_total = (
-            (len(dataloader.dataset) // (self.hparams.train_batch_size * max(1, self.hparams.n_gpu)))
-            // self.hparams.gradient_accumulation_steps
-            * float(self.hparams.num_train_epochs)
-        )
-        scheduler = get_linear_schedule_with_warmup(
-            self.opt, num_warmup_steps=int(0.1 * t_total) , num_training_steps=t_total
-        )
-        self.lr_scheduler = scheduler
-        '''
         return dataloader
 
     def val_dataloader(self):

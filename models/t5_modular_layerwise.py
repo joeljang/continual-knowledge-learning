@@ -9,8 +9,6 @@ from transformers import (
     T5Config,
     get_linear_schedule_with_warmup
 )
-
-from transformers.models.t5.modeling_t5 import T5LayerNorm, T5Block
 import torch
 from datasets import Pretrain
 from torch.utils.data import RandomSampler
@@ -21,6 +19,7 @@ from transformers.file_utils import ModelOutput
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 from transformers.generation_logits_process import LogitsProcessorList
 from transformers.modeling_outputs import Seq2SeqLMOutput, BaseModelOutputWithPastAndCrossAttentions
+
 
 import argparse
 import time
@@ -47,41 +46,11 @@ class GreedySearchEncoderDecoderOutput(ModelOutput):
 
 GreedySearchOutput = Union[GreedySearchEncoderDecoderOutput, GreedySearchDecoderOnlyOutput]
 
-class AdapterModel(nn.Module):
-    def __init__(self, pretrained_config, device):
-        super(AdapterModel, self).__init__()
-        self.config = pretrained_config
-        self.device = device
-        self.adapter_list = [1,11]
-        self.adapter_num = len(self.adapter_list)
-        self.layer_norm = T5LayerNorm(self.config.d_model, eps=self.config.layer_norm_epsilon)
-        self.adapter = nn.ModuleList(
-            [T5Block(self.config, has_relative_attention_bias=bool(i == 0)) for i in range(self.adapter_num)]
-        )
-
-
-    def forward(self, pretrained_model_outputs):
-        outputs = pretrained_model_outputs
-        sequence_output = outputs[0]
-        hidden_states = outputs.hidden_states
-        device = 'cuda:'+str(sequence_output.get_device())
-        hidden_states_last = torch.zeros(sequence_output.size(), device=device)
-
-        for i, adapter_module in enumerate(self.adapter):
-            pretrained_hidden_state = hidden_states[self.adapter_list[i]]
-            fusion_state = pretrained_hidden_state + hidden_states_last
-            hidden_states_last = adapter_module(fusion_state)[0]
-
-        #outputs = (hidden_states_last,) + outputs[2:]
-        outputs = (0.1 * self.layer_norm(hidden_states_last)) + sequence_output
-        return outputs  # (loss), logits, (hidden_states), (attentions)
-
-class T5FineTuner(pl.LightningModule):
+class T5(pl.LightningModule):
     def __init__(self, hparams):
-        super(T5FineTuner, self).__init__()
+        super(T5, self).__init__()
         self.save_hyperparameters(hparams)
-        self.config = T5Config.from_pretrained(hparams.model_name_or_path)
-        self.adapter = AdapterModel(self.config, self.device)
+        self.module = T5EncoderModel.from_pretrained(hparams.model_name_or_path)
         self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.criterion = nn.CrossEntropyLoss()
         self.softmax = nn.Softmax(2)
@@ -89,7 +58,10 @@ class T5FineTuner(pl.LightningModule):
         
         if self.hparams.freeze_embeds:
             self.freeze_embeds()
-        self.freeze_params(self.model.get_encoder())
+        if self.hparams.freeze_encoder:
+            self.freeze_params(self.model.get_encoder())
+            assert_all_frozen(self.model.get_encoder())
+        self.freeze_params(self.module) #Freezing Model
 
         self.step_count = 0
         self.output_dir = self.hparams.output_dir
@@ -164,8 +136,11 @@ class T5FineTuner(pl.LightningModule):
         if args.mode == 'pretrain':
             return Pretrain(tokenizer=tokenizer, type_path=type_path, num_samples=num_samples,  input_length=args.max_input_length, 
                             output_length=args.max_output_length, args=args)
+        elif args.mode =='finetune':
+            return Finetune(tokenizer=tokenizer, type_path=type_path, num_samples=num_samples,  input_length=args.max_input_length, 
+                            output_length=args.max_output_length, args=args)
         else:
-            raise NameError('Select the correct mode please.')
+            raise NameError('Select the correct mode dude..')
 
     def freeze_params(self, model):
         for par in model.parameters():
@@ -191,6 +166,177 @@ class T5FineTuner(pl.LightningModule):
 
     def is_logger(self):
         return self.trainer.global_rank <= 0
+
+    def forward_encoder(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        inputs_embeds=None,
+        head_mask=None,
+        cross_attn_head_mask=None,
+        past_key_values=None,
+        use_cache=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+        ):
+        use_cache = use_cache if use_cache is not None else self.model.encoder.config.use_cache
+        output_attentions = output_attentions if output_attentions is not None else self.model.encoder.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.model.encoder.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.model.encoder.config.use_return_dict
+
+        if input_ids is not None and inputs_embeds is not None:
+            err_msg_prefix = "decoder_" if self.model.encoder.is_decoder else ""
+            raise ValueError(
+                f"You cannot specify both {err_msg_prefix}inputs and {err_msg_prefix}inputs_embeds at the same time"
+            )
+        elif input_ids is not None:
+            input_shape = input_ids.size()
+            input_ids = input_ids.view(-1, input_shape[-1])
+        elif inputs_embeds is not None:
+            input_shape = inputs_embeds.size()[:-1]
+        else:
+            err_msg_prefix = "decoder_" if self.model.encoder.is_decoder else ""
+            raise ValueError(f"You have to specify either {err_msg_prefix}inputs or {err_msg_prefix}inputs_embeds")
+
+        if inputs_embeds is None:
+            assert self.model.encoder.embed_tokens is not None, "You have to initialize the model with valid token embeddings"
+            inputs_embeds = self.model.encoder.embed_tokens(input_ids)
+
+        batch_size, seq_length = input_shape
+
+        # required mask seq length can be calculated via length of past
+        mask_seq_length = past_key_values[0][0].shape[2] + seq_length if past_key_values is not None else seq_length
+
+        if use_cache is True:
+            assert self.model.encoder.is_decoder, f":obj:`use_cache` can only be set to `True` if {self.model.encoder} is used as a decoder"
+
+        if attention_mask is None:
+            attention_mask = torch.ones(batch_size, mask_seq_length).to(inputs_embeds.device)
+        if self.model.encoder.is_decoder and encoder_attention_mask is None and encoder_hidden_states is not None:
+            encoder_seq_length = encoder_hidden_states.shape[1]
+            encoder_attention_mask = torch.ones(
+                batch_size, encoder_seq_length, device=inputs_embeds.device, dtype=torch.long
+            )
+
+        # initialize past_key_values with `None` if past does not exist
+        if past_key_values is None:
+            past_key_values = [None] * len(self.model.encoder.block)
+
+        # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
+        # ourselves in which case we just need to make it broadcastable to all heads.
+        extended_attention_mask = self.model.encoder.get_extended_attention_mask(attention_mask, input_shape, inputs_embeds.device)
+
+        if self.model.encoder.is_decoder and encoder_attention_mask is not None:
+            encoder_extended_attention_mask = self.model.encoder.invert_attention_mask(encoder_attention_mask)
+        else:
+            encoder_extended_attention_mask = None
+
+        # Prepare head mask if needed
+        head_mask = self.model.encoder.get_head_mask(head_mask, self.model.encoder.config.num_layers)
+        cross_attn_head_mask = self.model.encoder.get_head_mask(cross_attn_head_mask, self.model.encoder.config.num_layers)
+        present_key_value_states = () if use_cache else None
+        all_hidden_states = () if output_hidden_states else None
+        all_attentions = () if output_attentions else None
+        all_cross_attentions = () if (output_attentions and self.model.encoder.is_decoder) else None
+        position_bias = None
+        encoder_decoder_position_bias = None
+
+        hidden_states = self.model.encoder.dropout(inputs_embeds)
+
+        for i, (layer_module, layer_module2, past_key_value) in enumerate(zip(self.model.encoder.block, self.module.encoder.block, past_key_values)):
+            layer_head_mask = head_mask[i]
+            cross_attn_layer_head_mask = cross_attn_head_mask[i]
+            if output_hidden_states:
+                all_hidden_states = all_hidden_states + (hidden_states,)
+
+            layer_outputs = layer_module(
+                hidden_states,
+                attention_mask=extended_attention_mask,
+                position_bias=position_bias,
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_attention_mask=encoder_extended_attention_mask,
+                encoder_decoder_position_bias=encoder_decoder_position_bias,
+                layer_head_mask=layer_head_mask,
+                #cross_attn_layer_head_mask=cross_attn_layer_head_mask,
+                past_key_value=past_key_value,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+            )
+
+            layer_outputs2 = layer_module2(
+                hidden_states,
+                attention_mask=extended_attention_mask,
+                position_bias=position_bias,
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_attention_mask=encoder_extended_attention_mask,
+                encoder_decoder_position_bias=encoder_decoder_position_bias,
+                layer_head_mask=layer_head_mask,
+                #cross_attn_layer_head_mask=cross_attn_layer_head_mask,
+                past_key_value=past_key_value,
+                use_cache=use_cache,
+                output_attentions=output_attentions,
+            )
+
+            # layer_outputs is a tuple with:
+            # hidden-states, key-value-states, (self-attention weights), (self-attention position bias), (cross-attention weights), (cross-attention position bias)
+            if use_cache is False:
+                layer_outputs = layer_outputs[:1] + (None,) + layer_outputs[1:]
+                layer_outputs2 = layer_outputs2[:1] + (None,) + layer_outputs2[1:]
+            layer_outputs = layer_outputs + layer_outputs2 #Adding the layer outputs of both model & module
+            hidden_states, present_key_value_state = layer_outputs[:2]
+
+            # We share the position biases between the layers - the first layer store them
+            # layer_outputs = hidden-states, key-value-states (self-attention weights),
+            # (self-attention position bias), (cross-attention weights), (cross-attention position bias)
+            position_bias = layer_outputs[2]
+            if self.model.encoder.is_decoder and encoder_hidden_states is not None:
+                encoder_decoder_position_bias = layer_outputs[4 if output_attentions else 3]
+            # append next layer key value states
+            if use_cache:
+                present_key_value_states = present_key_value_states + (present_key_value_state,)
+
+            if output_attentions:
+                all_attentions = all_attentions + (layer_outputs[3],)
+                if self.model.encoder.is_decoder:
+                    all_cross_attentions = all_cross_attentions + (layer_outputs[5],)
+
+            # Model Parallel: If it's the last layer for that device, put things on the next device
+            if self.model.encoder.model_parallel:
+                for k, v in self.model.encoder.device_map.items():
+                    if i == v[-1] and "cuda:" + str(k) != self.model.encoder.last_device:
+                        hidden_states = hidden_states.to("cuda:" + str(k + 1))
+
+        hidden_states = self.model.encoder.final_layer_norm(hidden_states)
+        hidden_states = self.model.encoder.dropout(hidden_states)
+
+        # Add last layer
+        if output_hidden_states:
+            all_hidden_states = all_hidden_states + (hidden_states,)
+
+        if not return_dict:
+            return tuple(
+                v
+                for v in [
+                    hidden_states,
+                    present_key_value_states,
+                    all_hidden_states,
+                    all_attentions,
+                    all_cross_attentions,
+                ]
+                if v is not None
+            )
+        return BaseModelOutputWithPastAndCrossAttentions(
+            last_hidden_state=hidden_states,
+            past_key_values=present_key_value_states,
+            hidden_states=all_hidden_states,
+            attentions=all_attentions,
+            cross_attentions=all_cross_attentions,
+        )
 
     def forward(
             self,
@@ -220,19 +366,17 @@ class T5FineTuner(pl.LightningModule):
                 warnings.warn(__HEAD_MASK_WARNING_MSG, FutureWarning)
                 decoder_head_mask = head_mask
 
-        # Convert encoder inputs in embeddings if needed
-        encoder_outputs = self.model.encoder(
+        encoder_outputs = self.forward_encoder(
             input_ids=input_ids,
             attention_mask=attention_mask,
             inputs_embeds=inputs_embeds,
             head_mask=head_mask,
             output_attentions=output_attentions,
-            output_hidden_states=True,
+            output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
 
-        combine_features = encoder_outputs[0] # original t5 output
-        hidden_states = self.adapter(encoder_outputs)
+        hidden_states = encoder_outputs[0]
 
         if self.model.model_parallel:
             torch.cuda.set_device(self.model.decoder.first_device)
@@ -646,12 +790,8 @@ class T5FineTuner(pl.LightningModule):
         em_score = torch.tensor(em_score,dtype=torch.float32)
         subset_match_score = torch.tensor(subset_match_score,dtype=torch.float32)
         #bleu_score = torch.tensor(bleu_score,dtype=torch.float32)
-        if self.hparams.dataset_version=='debug':
-            lama_len = 1202
-        else:
-            lama_len = 20725
         if self.hparams.dataset=='recentnews':
-            if val_num < lama_len:
+            if val_num < 20720:
                 self.log('lama_em_score', em_score, prog_bar=True, logger=True)
                 self.log('lama_subset_match_score', subset_match_score, prog_bar=True, logger=True)
             else:
@@ -693,7 +833,7 @@ class T5FineTuner(pl.LightningModule):
         self.opt = optimizer
         len_data = len(self.train_dataloader())
         denomniator = self.hparams.n_gpu
-        steps_per_epoch = ( len_data // denomniator ) + 1
+        steps_per_epoch = len_data // denomniator
         lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
 
         if self.hparams.use_lr_scheduling:
@@ -706,6 +846,17 @@ class T5FineTuner(pl.LightningModule):
         train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
         sampler=RandomSampler(train_dataset)
         dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
+        '''
+        t_total = (
+            (len(dataloader.dataset) // (self.hparams.train_batch_size * max(1, self.hparams.n_gpu)))
+            // self.hparams.gradient_accumulation_steps
+            * float(self.hparams.num_train_epochs)
+        )
+        scheduler = get_linear_schedule_with_warmup(
+            self.opt, num_warmup_steps=int(0.1 * t_total) , num_training_steps=t_total
+        )
+        self.lr_scheduler = scheduler
+        '''
         return dataloader
 
     def val_dataloader(self):
