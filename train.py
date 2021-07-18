@@ -90,7 +90,7 @@ if __name__ == '__main__':
     # Defining how to save model checkpoints during training. Details: https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.model_checkpoint.html 
     if args.mode == 'pretrain':
         checkpoint_callback = pl.callbacks.ModelCheckpoint(
-            dirpath = args.output_dir, save_top_k=0, save_last=True
+            dirpath = args.output_dir, save_last=True
         )
     else:
         checkpoint_callback = pl.callbacks.ModelCheckpoint(
