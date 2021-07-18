@@ -1,8 +1,8 @@
 import pytorch_lightning as pl
-from models.Lora import T5ForConditionalGeneration
 from transformers import (
     AdamW,
     Adafactor,
+    T5ForConditionalGeneration,
     T5Tokenizer,
     T5Config,
     get_linear_schedule_with_warmup
@@ -32,7 +32,7 @@ class T5(pl.LightningModule):
         self.freeze_params(self.model) 
         # Unfreezing bias terms
         for name, param in self.model.named_parameters():
-            if 'lora' in name:
+            if 'bias' in name:
                 param.requires_grad = True
         
         self.step_count = 0
