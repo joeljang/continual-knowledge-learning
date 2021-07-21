@@ -19,9 +19,9 @@
     "CUDA_VISIBLE_DEVICES" : "2,3",
     "wandb_log": false,
     "wandb_project": "continual_learning",
-    "wandb_run_name" : "T5_large_recentnews(debug)_lr.001_baseline",
+    "wandb_run_name" : "T5_large_recentnews(small)_lr.001_baseline",
     "mode" : "pretrain",
     "use_lr_scheduling" : false,
-    "check_validation" : false,
+    "check_validation" : true,
     "checkpoint_path" : ""
 }

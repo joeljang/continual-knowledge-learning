@@ -151,8 +151,11 @@ if __name__ == '__main__':
         loader = DataLoader(dataset, batch_size=args.train_batch_size, shuffle=False)
         
         total_cnt = 0
+        rp_cnt = 0
         em_correct_num = 0
         subset_correct_num = 0
+        rp_em_correct_num = 0
+        rp_subset_correct_num = 0
 
         def clean_up(text):
             text =text.replace('<pad>', '')
@@ -166,7 +169,6 @@ if __name__ == '__main__':
             text = text.replace("'", '')
             text = text.replace('"', '')
             return text     
-
         for batch in iter(loader):
             outs = model.model.generate(
                 batch["source_ids"].cuda(),
@@ -191,14 +193,21 @@ if __name__ == '__main__':
                 subset = model.approx_match_score(predicted, ground_truth)         
                 print(f'{total_cnt} INPUT : {lines[0]}')
                 print(f'GROUD TRUTH: {ground_truth}, MODEL OUTPUT: {predicted}')
-
-                if em == 1:
-                    em_correct_num+=1
-                if subset == 1:
-                    subset_correct_num+=1
+                if total_cnt < 20725:
+                    if em == 1:
+                        em_correct_num+=1
+                    if subset == 1:
+                        subset_correct_num+=1
+                else:
+                    rp_cnt+=1
+                    if em == 1:
+                        rp_em_correct_num+=1
+                    if subset == 1:
+                        rp_subset_correct_num+=1
 
         print(f'Number of total validation data: {total_cnt}')
-        print(f'Number of correct predictions out of {total_cnt} : {em_correct_num, subset_correct_num}. Percentage : {em_correct_num / total_cnt, subset_correct_num / total_cnt}')
+        print(f'Number of correct lama predictions out of 20725 : {em_correct_num, subset_correct_num}. Percentage : {em_correct_num / 20725, subset_correct_num / 20725}')
+        print(f'Number of correct recentprobe predictions out of {rp_cnt} : {rp_em_correct_num, rp_subset_correct_num}. Percentage : {rp_em_correct_num / rp_cnt, rp_subset_correct_num / rp_cnt}')
     else:
         set_seed(40)
         model = T5Model(args)
