@@ -31,7 +31,7 @@ from transformers.file_utils import (
     DUMMY_MASK,
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
-    #is_torch_fx_proxy,
+    is_torch_fx_proxy,
     replace_return_docstrings,
 )
 from transformers.modeling_outputs import (
@@ -301,22 +301,6 @@ class T5LayerFF(nn.Module):
         hidden_states = hidden_states + self.dropout(forwarded_states)
         return hidden_states
 
-class LoRALayer(nn.Module):
-    def __init__(self, n_in, n_out=None, adapter_dim=16, adapter_alpha=32):
-        super(LoRALayer, self).__init__()
-        if not n_out:
-            n_out = n_in
-        self.adapter_dim = adapter_dim
-        self.adapter_alpha = adapter_alpha
-        self.adapter_proj_1 = nn.Linear(n_in, adapter_dim, bias=False)
-        nn.init.normal_(self.adapter_proj_1.weight, std=0.02)
-        self.adapter_proj_2 = nn.Linear(adapter_dim, n_out, bias=False)
-        self.adapter_proj_2.weight.data.zero_()
-
-    def forward(self, x):
-        scale_factor = self.adapter_dim / self.adapter_alpha
-        result = torch.matmul(x, self.adapter_proj_1.weight.type_as(x).T)
-        return torch.matmul(result, self.adapter_proj_2.weight.type_as(x).T) * scale_factor
 
 class T5Attention(nn.Module):
     def __init__(self, config: T5Config, has_relative_attention_bias=False):
@@ -330,16 +314,12 @@ class T5Attention(nn.Module):
         self.n_heads = config.num_heads
         self.dropout = config.dropout_rate
         self.inner_dim = self.n_heads * self.key_value_proj_dim
-        self.lora_attn_dim = 4
-        self.lora_attn_alpha = 16
 
         # Mesh TensorFlow initialization to avoid scaling before softmax
-        self.q = nn.Linear(self.d_model, self.inner_dim, bias=False)     
+        self.q = nn.Linear(self.d_model, self.inner_dim, bias=False)
         self.k = nn.Linear(self.d_model, self.inner_dim, bias=False)
-        self.v = nn.Linear(self.d_model, self.inner_dim, bias=False)      
+        self.v = nn.Linear(self.d_model, self.inner_dim, bias=False)
         self.o = nn.Linear(self.inner_dim, self.d_model, bias=False)
-        self.q_lora = LoRALayer(self.d_model, adapter_dim=self.lora_attn_dim, adapter_alpha=self.lora_attn_alpha)
-        self.v_lora = LoRALayer(self.d_model, adapter_dim=self.lora_attn_dim, adapter_alpha=self.lora_attn_alpha)
 
         if self.has_relative_attention_bias:
             self.relative_attention_bias = nn.Embedding(self.relative_attention_num_buckets, self.n_heads)
@@ -486,41 +466,15 @@ class T5Attention(nn.Module):
                     hidden_states = past_key_value
             return hidden_states
 
-        def project_lora(hidden_states, proj_layer, proj_layer_lora, key_value_states, past_key_value):
-            """projects hidden states correctly to key/query states"""
-            if key_value_states is None:
-                # self-attn
-                # (batch_size, n_heads, seq_length, dim_per_head)
-                hidden_states = shape(proj_layer(hidden_states) + proj_layer_lora(hidden_states))
-            elif past_key_value is None:
-                # cross-attn
-                # (batch_size, n_heads, seq_length, dim_per_head)
-                hidden_states = shape(proj_layer(key_value_states) + proj_layer_lora(key_value_states))
-
-            if past_key_value is not None:
-                if key_value_states is None:
-                    # self-attn
-                    # (batch_size, n_heads, key_length, dim_per_head)
-                    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
-                else:
-                    # cross-attn
-                    hidden_states = past_key_value
-            return hidden_states
-
         # get query states
-        query_states = self.q(hidden_states) # (batch_size, n_heads, seq_length, dim_per_head)
-        query_states_lora = self.q_lora(hidden_states)
-        query_states = shape(query_states + query_states_lora)
+        query_states = shape(self.q(hidden_states))  # (batch_size, n_heads, seq_length, dim_per_head)
 
         # get key/value states
         key_states = project(
             hidden_states, self.k, key_value_states, past_key_value[0] if past_key_value is not None else None
         )
-        #value_states = project(
-        #    hidden_states, self.v, key_value_states, past_key_value[1] if past_key_value is not None else None
-        #)
-        value_states = project_lora(
-            hidden_states, self.v, self.v_lora, key_value_states, past_key_value[1] if past_key_value is not None else None
+        value_states = project(
+            hidden_states, self.v, key_value_states, past_key_value[1] if past_key_value is not None else None
         )
 
         # compute scores
@@ -567,6 +521,7 @@ class T5Attention(nn.Module):
         if output_attentions:
             outputs = outputs + (attn_weights,)
         return outputs
+
 
 class T5LayerSelfAttention(nn.Module):
     def __init__(self, config, has_relative_attention_bias=False):
@@ -1323,7 +1278,6 @@ class T5Model(T5PreTrainedModel):
         self.decoder.parallelize(self.device_map)
         self.model_parallel = True
 
-
     @add_start_docstrings(DEPARALLELIZE_DOCSTRING)
     def deparallelize(self):
         self.encoder.deparallelize()
@@ -1488,6 +1442,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
         encoder_config.use_cache = False
         encoder_config.is_encoder_decoder = False
         self.encoder = T5Stack(encoder_config, self.shared)
+        self.encoder_modular = T5Stack(encoder_config, self.shared)
 
         decoder_config = copy.deepcopy(config)
         decoder_config.is_decoder = True
@@ -1512,6 +1467,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
         )
         assert_device_map(self.device_map, len(self.encoder.block))
         self.encoder.parallelize(self.device_map)
+        self.encoder_modular.parallelize(self.device_map)
         self.decoder.parallelize(self.device_map)
         self.lm_head = self.lm_head.to(self.decoder.first_device)
         self.model_parallel = True
@@ -1520,8 +1476,10 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
     @add_start_docstrings(DEPARALLELIZE_DOCSTRING)
     def deparallelize(self):
         self.encoder.deparallelize()
+        self.encoder_modular.deparallelize()
         self.decoder.deparallelize()
         self.encoder = self.encoder.to("cpu")
+        self.encoder_modular = self.encoder_modular.to("cpu")
         self.decoder = self.decoder.to("cpu")
         self.lm_head = self.lm_head.to("cpu")
         self.model_parallel = False
@@ -1535,6 +1493,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
     def set_input_embeddings(self, new_embeddings):
         self.shared = new_embeddings
         self.encoder.set_input_embeddings(new_embeddings)
+        self.encoder_modular.set_input_embeddings(new_embeddings)
         self.decoder.set_input_embeddings(new_embeddings)
 
     def set_output_embeddings(self, new_embeddings):
@@ -1561,6 +1520,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
         decoder_head_mask=None,
         cross_attn_head_mask=None,
         encoder_outputs=None,
+        encoder_modular_outputs=None,
         past_key_values=None,
         inputs_embeds=None,
         decoder_inputs_embeds=None,
@@ -1602,7 +1562,8 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
             if self.config.num_layers == self.config.num_decoder_layers:
                 warnings.warn(__HEAD_MASK_WARNING_MSG, FutureWarning)
                 decoder_head_mask = head_mask
-
+        
+        
         # Encode if needed (training, first prediction pass)
         if encoder_outputs is None:
             # Convert encoder inputs in embeddings if needed
@@ -1615,15 +1576,32 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
             )
+            encoder_modular_outputs = self.encoder_modular(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                inputs_embeds=inputs_embeds,
+                head_mask=head_mask,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+            hidden_states = encoder_outputs[0] + (0.1 * encoder_modular_outputs[0])
+        else:
+            hidden_states = encoder_outputs[0]
+        
+        '''
         elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
             encoder_outputs = BaseModelOutput(
                 last_hidden_state=encoder_outputs[0],
                 hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
                 attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
             )
-
-        hidden_states = encoder_outputs[0]
-
+            encoder_modular_outputs = BaseModelOutput(
+                last_hidden_state=encoder_modular_outputs[0],
+                hidden_states=encoder_modular_outputs[1] if len(encoder_modular_outputs) > 1 else None,
+                attentions=encoder_modular_outputs[2] if len(encoder_modular_outputs) > 2 else None,
+            )
+        '''
         if self.model_parallel:
             torch.cuda.set_device(self.decoder.first_device)
 

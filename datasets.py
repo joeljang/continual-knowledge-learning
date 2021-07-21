@@ -53,9 +53,14 @@ class Pretrain(Dataset):
         if self.dataset_version=='debug':
             recent = pd.read_csv('data/recentprobe_m_debug.csv')
             lama = pd.read_csv('data/lama_template_debug.csv')
-        elif self.dataset_version=='small':
-            recent = pd.read_csv('data/recentprobe_m_small.csv')
-            lama = pd.read_csv('data/lama_template.csv')
+        elif 'small' in self.dataset_version:
+            if self.dataset_version=='small':
+                recent = pd.read_csv('data/recentprobe_small.csv')
+            elif self.dataset_version=='small_m':
+                recent = pd.read_csv('data/recentprobe_m_small.csv')
+            else:
+                raise Exception('Select the proper dataset version.')
+            lama = pd.read_csv('data/lama_template.csv')         
         elif self.dataset_version=='full':
             recent = pd.read_csv('data/recentprobe_m_full.csv')
             lama = pd.read_csv('data/lama_template.csv')

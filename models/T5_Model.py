@@ -1,17 +1,24 @@
 import pytorch_lightning as pl
+from models.Modular_T5 import T5ForConditionalGeneration as T5_Modular
+from models.Modular_Small_T5 import T5ForConditionalGeneration as T5_Modular_Small
+from models.Kadapter_T5 import T5ForConditionalGeneration as T5_Kadapter
+from models.Lora_T5 import T5ForConditionalGeneration as T5_Lora
+from models.RecAdam import RecAdam, anneal_function
 from transformers import (
     AdamW,
     Adafactor,
-    T5ForConditionalGeneration,
     T5Tokenizer,
+    T5ForConditionalGeneration,
+    T5EncoderModel,
     T5Config,
     get_linear_schedule_with_warmup
 )
 import torch
 from datasets import Pretrain
-from torch.utils.data import RandomSampler
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import RandomSampler, SubsetRandomSampler
+from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
 
+import random
 import argparse
 import time
 import re
@@ -25,15 +32,51 @@ class T5(pl.LightningModule):
     def __init__(self, hparams):
         super(T5, self).__init__()
         self.save_hyperparameters(hparams)
-        self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
+
+        self.mix_ratio = 4
+        self.mix_decay = 0.7
+        self.epoch = 0
+
+        if hparams.method=='modular':
+            self.model = T5_Modular.from_pretrained(hparams.model_name_or_path)
+        elif hparams.method=='modular_small':
+            self.model = T5_Modular_Small.from_pretrained(hparams.model_name_or_path)
+        elif hparams.method=='kadapter':
+            self.model = T5_Kadapter.from_pretrained(hparams.model_name_or_path)
+        elif hparams.method=='lora':
+            self.model = T5_Lora.from_pretrained(hparams.model_name_or_path)
+        elif hparams.method=='recadam':
+            self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
+            self.pretrained_model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
+            self.freeze_params(self.pretrained_model) #Freezing pretrained model
+        else:
+            self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.tokenizer = T5Tokenizer.from_pretrained(hparams.tokenizer_name_or_path)
         
-        if self.hparams.freeze_embeds:
-            self.freeze_embeds()
-        if self.hparams.freeze_encoder:
+        #Freezing only encoder or the whole model
+        if hparams.freeze_level==0: # Do not freeze any parameters
+            print('Not freezing any parameters!')
+        elif hparams.freeze_level==1: # Freeze encoder only
             self.freeze_params(self.model.get_encoder())
-            assert_all_frozen(self.model.get_encoder())
+        elif hparams.freeze_level==2: # Freeze encoder and decoder
+            self.freeze_params(self.model) 
+
+        if 'modular' in hparams.method:
+            for name, param in self.model.named_parameters():
+                if 'encoder_modular' in name:
+                    param.requires_grad = True
+        elif hparams.method=='kadapter':
+            # Unfreezing the parameters used for lora
+            for name, param in self.model.named_parameters():
+                if 'kadapter' in name:
+                    param.requires_grad = True
+        elif hparams.method=='lora':
+            # Unfreezing the parameters used for lora
+            for name, param in self.model.named_parameters():
+                if 'lora' in name:
+                    param.requires_grad = True
         
+
         self.step_count = 0
         self.output_dir = self.hparams.output_dir
             
@@ -232,27 +275,78 @@ class T5(pl.LightningModule):
         self.log("loss", loss)
         return loss
 
+    def on_train_epoch_start(self):
+        if self.hparams.method=='mixreview':
+            train_set = self.train_dataloader().dataset
+            self.epoch+=1
+
     def validation_step(self, batch, batch_idx):
         return self._generative_step(batch, batch_idx)
 
     def configure_optimizers(self):
         "Prepare optimizer and schedule (linear warmup and decay)"
-
-        model = self.model
-        no_decay = ["bias", "LayerNorm.weight"]
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-                "weight_decay": self.hparams.weight_decay,
-            },
-            {
-                "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-                "weight_decay": 0.0,
-            },
-        ]
-        
-        #optimizer = AdamW(optimizer_grouped_parameters, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon)
-        optimizer = Adafactor(optimizer_grouped_parameters, lr=self.hparams.learning_rate, scale_parameter=False, relative_step=False)
+        if self.hparams.method=='recadam':
+            no_decay = ["bias", "LayerNorm.weight"]
+            model_type = 't5'
+            recadam_anneal_w = 1.0
+            recadam_anneal_fun = 'sigmoid'
+            recadam_anneal_k = 0.5
+            recadam_anneal_t0 = 250
+            recadam_pretrain_cof = 5000.0
+            new_model = self.model
+            pretrained_model = self.pretrained_model
+            optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in new_model.named_parameters() if
+                            not any(nd in n for nd in no_decay) and model_type in n],
+                    "weight_decay": self.hparams.weight_decay,
+                    "anneal_w": recadam_anneal_w,
+                    "pretrain_params": [p_p for p_n, p_p in pretrained_model.named_parameters() if
+                                        not any(nd in p_n for nd in no_decay) and model_type in p_n]
+                },
+                {
+                    "params": [p for n, p in new_model.named_parameters() if
+                            not any(nd in n for nd in no_decay) and model_type not in n],
+                    "weight_decay": self.hparams.weight_decay,
+                    "anneal_w": 0.0,
+                    "pretrain_params": [p_p for p_n, p_p in pretrained_model.named_parameters() if
+                                        not any(nd in p_n for nd in no_decay) and model_type not in p_n]
+                },
+                {
+                    "params": [p for n, p in new_model.named_parameters() if
+                            any(nd in n for nd in no_decay) and model_type in n],
+                    "weight_decay": 0.0,
+                    "anneal_w": recadam_anneal_w,
+                    "pretrain_params": [p_p for p_n, p_p in pretrained_model.named_parameters() if
+                                        any(nd in p_n for nd in no_decay) and model_type in p_n]
+                },
+                {
+                    "params": [p for n, p in new_model.named_parameters() if
+                            any(nd in n for nd in no_decay) and model_type not in n],
+                    "weight_decay": 0.0,
+                    "anneal_w": 0.0,
+                    "pretrain_params": [p_p for p_n, p_p in pretrained_model.named_parameters() if
+                                        any(nd in p_n for nd in no_decay) and model_type not in p_n]
+                }
+            ]
+            optimizer = RecAdam(optimizer_grouped_parameters, lr=self.hparams.learning_rate, eps=self.hparams.adam_epsilon,
+                                anneal_fun=recadam_anneal_fun, anneal_k=recadam_anneal_k,
+                                anneal_t0=recadam_anneal_t0, pretrain_cof=recadam_pretrain_cof)
+        else:
+            model = self.model
+            no_decay = ["bias", "LayerNorm.weight"]
+            optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+                    "weight_decay": self.hparams.weight_decay,
+                },
+                {
+                    "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+                    "weight_decay": 0.0,
+                },
+            ]
+            
+            optimizer = Adafactor(optimizer_grouped_parameters, lr=self.hparams.learning_rate, scale_parameter=False, relative_step=False)
 
         self.optimizer = optimizer
         len_data = len(self.train_dataloader())
@@ -268,8 +362,27 @@ class T5(pl.LightningModule):
     def train_dataloader(self):   
         n_samples = self.n_obs['train']
         train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
-        sampler=RandomSampler(train_dataset)
-        dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
+        
+
+        n_samples = self.n_obs['train']
+        train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
+        if self.hparams.method=='mixreview':
+            pretrain_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="pretrain", num_samples=n_samples, args=self.hparams)
+            mixed_dataset = ConcatDataset([train_dataset,pretrain_dataset])
+            train_len = len(train_dataset)
+            mix_len = int(len(train_dataset) * self.mix_ratio * (self.mix_decay ** self.epoch))
+            pretrain_indices = [a+train_len for a in random.sample(range(0,len(pretrain_dataset)),len(pretrain_dataset))[:mix_len]]
+            print("mix len is ", mix_len)
+            train_indices = list(range(train_len))
+            indices = train_indices + pretrain_indices
+            # print("final len is ", indices)
+            # sampler = SubsetRandomSampler(indices)
+            subset_dataset = Subset(mixed_dataset, indices)
+            dataloader = DataLoader(subset_dataset, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
+            print("dataset length is ", len(dataloader.dataset))
+        else:
+            sampler = RandomSampler(train_dataset)
+            dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
         return dataloader
 
     def val_dataloader(self):

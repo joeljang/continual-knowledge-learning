@@ -14,6 +14,7 @@ from transformers import (
 )
 from torch.utils.data import DataLoader
 from models import load_model
+
 from datasets import Pretrain
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 
@@ -53,6 +54,7 @@ if __name__ == '__main__':
         dataset_version = hparam.dataset_version,
         model_name_or_path=hparam.model,
         method=hparam.method,
+        freeze_level=hparam.freeze_level,
         mode=hparam.mode,
         tokenizer_name_or_path=hparam.model,
         max_input_length=hparam.input_length,
