@@ -89,7 +89,7 @@ if __name__ == '__main__':
     args = argparse.Namespace(**args_dict)
 
     # Defining how to save model checkpoints during training. Details: https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.model_checkpoint.html 
-    callbacks = [ModelCheckpoint(dirpath = args.output_dir)]
+    callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True)]
     checkpoint_callback = True
 
     if args.output_dir=="":
