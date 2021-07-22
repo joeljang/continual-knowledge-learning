@@ -10,7 +10,7 @@ import textwrap
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from transformers import (
-    T5Tokenizer
+    T5Tokenizer,GPT2Tokenizer
 )
 from torch.utils.data import DataLoader
 from models import load_model
@@ -52,6 +52,7 @@ if __name__ == '__main__':
         output_dir=hparam.output_dir, # Path to save the checkpoints
         dataset=hparam.dataset,
         dataset_version = hparam.dataset_version,
+        finetuning_ratio = hparam.finetuning_ratio,
         model_name_or_path=hparam.model,
         method=hparam.method,
         freeze_level=hparam.freeze_level,
@@ -210,6 +211,9 @@ if __name__ == '__main__':
         print(f'Number of correct recentprobe predictions out of {rp_cnt} : {rp_em_correct_num, rp_subset_correct_num}. Percentage : {rp_em_correct_num / rp_cnt, rp_subset_correct_num / rp_cnt}')
     else:
         set_seed(40)
-        model = T5Model(args)
+        if args.checkpoint_path!="":
+            model = T5Model.load_from_checkpoint(checkpoint_path=args.checkpoint_path, hparams=args) 
+        else:
+            model = T5Model(args)
         trainer = pl.Trainer(**train_params)
         trainer.fit(model)

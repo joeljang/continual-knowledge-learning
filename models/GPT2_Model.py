@@ -33,6 +33,11 @@ class GPT2(pl.LightningModule):
             "pad_token": "<pad>",
             "mask_token": "<mask>"
             })
+
+        # need to be checked 
+        self.model.resize_token_embeddings(len(self.tokenizer))
+        self.tokenizer.padding_side = "left"
+
         self.output_dir = self.hparams.output_dir
             
         n_observations_per_split = {
@@ -115,7 +120,7 @@ class GPT2(pl.LightningModule):
         return score_bleu
 
     def get_dataset(self, tokenizer, type_path, num_samples, args):
-        if args.mode == 'pretrain':
+        if args.mode == 'pretrain' or args.mode =='finetune':
             return Pretrain(tokenizer=tokenizer, type_path=type_path, num_samples=num_samples,  input_length=args.max_input_length, 
                             output_length=args.max_output_length, args=args)
         else:
@@ -150,16 +155,32 @@ class GPT2(pl.LightningModule):
         return self.model(
             input_ids,
             attention_mask=attention_mask,
+            labels=lm_labels,
     )
 
     def _step(self, batch):
-        lm_labels = batch["target_ids"]
-        lm_labels[lm_labels[:, :] == self.tokenizer.pad_token_id] = -100
+        if self.hparams.dataset == 'recentnews':
+            lm_labels = batch["target_ids"]
+            lm_labels[lm_labels[:, :] == self.tokenizer.pad_token_id] = -100
+        else:
+            lm_labels = batch["target_ids"]
+            lm_labels[:,:-3] = -100
         outputs = self(
             input_ids=batch["source_ids"],
             attention_mask=batch["source_mask"],
             lm_labels=lm_labels,
-            decoder_attention_mask=batch['target_mask']
+        )
+
+        loss = outputs[0]
+        return loss
+
+    def valid_step(self, batch):
+        lm_labels = batch["target_ids"].clone()
+        lm_labels[:,:-3] = -100
+        outputs = self(
+            input_ids=batch["target_ids"],
+            attention_mask=batch["target_mask"],
+            lm_labels=lm_labels,
         )
 
         loss = outputs[0]
@@ -182,17 +203,26 @@ class GPT2(pl.LightningModule):
             batch["source_ids"],
             attention_mask=batch["source_mask"],
             use_cache=True,
-            max_length=10,
+            max_length=53,
             num_beams=2,
             early_stopping=True
         )
 
+        generated_ids = torch.transpose(torch.transpose(generated_ids,0,1)[50:],0,1)
         preds = self.ids_to_clean_text(generated_ids)
-        targets = self.ids_to_clean_text(batch["target_ids"])
+        clean_preds = []
+        for text in preds:
+            if "." in text:
+                clean_preds.append(text[:text.find(".")+1])
+            else: 
+                clean_preds.append(text)
+        print("clean_preds",clean_preds)
+        targets = self.ids_to_clean_text(batch["label_ids"])
+        print("targets",targets)
             
         gen_time = (time.time() - t0) / batch["source_ids"].shape[0]  
     
-        loss = self._step(batch)
+        loss = self.valid_step(batch)
 
         self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         summ_len = np.mean(self.lmap(len, generated_ids))
@@ -215,6 +245,12 @@ class GPT2(pl.LightningModule):
             else:
                 self.log('recent_em_score', em_score, prog_bar=True, logger=True)
                 self.log('recent_subset_match_score', subset_match_score, prog_bar=True, logger=True)
+        elif self.hparams.dataset=='lama':
+            self.log('lama_em_score', em_score, prog_bar=True, logger=True)
+            self.log('lama_subset_match_score', subset_match_score, prog_bar=True, logger=True)
+        elif self.hparams.dataset=='recentprobe':
+            self.log('recent_em_score', em_score, prog_bar=True, logger=True)
+            self.log('recent_subset_match_score', subset_match_score, prog_bar=True, logger=True)
         else:
             self.log('em_score', em_score, prog_bar=True, logger=True)
             self.log('subset_match_score', subset_match_score, prog_bar=True, logger=True)
@@ -267,11 +303,13 @@ class GPT2(pl.LightningModule):
         return dataloader
 
     def val_dataloader(self):
-        n_samples = self.n_obs['validation']
-        
-        validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams)
-        #sampler=RandomSampler(validation_dataset)
-        return DataLoader(validation_dataset, batch_size=self.hparams.eval_batch_size, num_workers=self.hparams.num_workers, shuffle=False)
+        if self.hparams.mode == 'pretrain':
+            return None
+        else: 
+            n_samples = self.n_obs['validation']
+            validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams)
+            #sampler=RandomSampler(validation_dataset)
+            return DataLoader(validation_dataset, batch_size=self.hparams.eval_batch_size, num_workers=self.hparams.num_workers, shuffle=False)
     
     
     def test_dataloader(self):
