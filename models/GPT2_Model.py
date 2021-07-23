@@ -7,7 +7,7 @@ from transformers import (
 )
 
 import torch
-from datasets import Pretrain
+from Datasets import Pretrain
 from torch.utils.data import RandomSampler
 from torch.utils.data import Dataset, DataLoader
 
@@ -308,7 +308,6 @@ class GPT2(pl.LightningModule):
         else: 
             n_samples = self.n_obs['validation']
             validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams)
-            #sampler=RandomSampler(validation_dataset)
             return DataLoader(validation_dataset, batch_size=self.hparams.eval_batch_size, num_workers=self.hparams.num_workers, shuffle=False)
     
     

@@ -1,7 +1,7 @@
 {
     "input_length" : 350,
     "output_length" : 350,
-    "num_train_epochs" : 1,
+    "num_train_epochs" : 8,
     "output_dir" : "outputs/GPT2_large_recentnews(debug)_lr.001_baseline",
     "dataset" : "recentnews",
     "dataset_version" : "debug",

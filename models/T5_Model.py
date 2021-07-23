@@ -14,7 +14,7 @@ from transformers import (
     get_linear_schedule_with_warmup
 )
 import torch
-from datasets import Pretrain
+from Datasets import Pretrain
 from torch.utils.data import RandomSampler, SubsetRandomSampler
 from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
 
@@ -160,7 +160,7 @@ class T5(pl.LightningModule):
         return score_bleu
 
     def get_dataset(self, tokenizer, type_path, num_samples, args):
-        if args.mode == 'pretrain':
+        if args.mode == 'pretrain' or args.mode == 'finetune':
             return Pretrain(tokenizer=tokenizer, type_path=type_path, num_samples=num_samples,  input_length=args.max_input_length, 
                             output_length=args.max_output_length, args=args)
         else:

@@ -15,7 +15,7 @@ from transformers import (
 from torch.utils.data import DataLoader
 from models import load_model
 
-from datasets import Pretrain
+from Datasets import Pretrain
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 
 def set_seed(seed):
@@ -46,6 +46,10 @@ if __name__ == '__main__':
         wandb_logger = WandbLogger(project=hparam.wandb_project, name=hparam.wandb_run_name, entity="lklab_kaist")
     else:
         wandb_logger = None
+
+    #Init configs that are not given
+    if 'finetuning_ratio' not in hparam:
+        hparam.finetuning_ratio=0.0
 
     #Setting configurations
     args_dict = dict(

@@ -3,12 +3,13 @@ import pandas as pd
 import json
 import re
 import math 
-from transformers import pipeline
+#from transformers import pipeline
 import os
 import random
 import numpy as np
+import pprint
 
-from nlp import load_dataset
+from datasets import load_dataset
 
 class Pretrain(Dataset):
     def __init__(self, tokenizer, type_path, num_samples, input_length, output_length, args, print_text=False):
@@ -64,16 +65,35 @@ class Pretrain(Dataset):
                 if type_path =='train':
                     self.dataset = pd.read_csv('data/recentprobe_small.csv', nrows=int(len(original)*self.args.finetuning_ratio))
                 else:
-                    self.dataset = pd.read_csv('data/recentprobe_small.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))           
+                    self.dataset = pd.read_csv('data/recentprobe_small.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))       
+        elif self.args.dataset== 'TriviaQA':
+            # Get the KILT task datasets
+            kilt_triviaqa = load_dataset("kilt_tasks", name="triviaqa_support_only")
+
+            # Most tasks in KILT already have all required data, but KILT-TriviaQA only provides the question IDs, not the questions themselves.
+            # Thankfully, we can get the original TriviaQA data with:
+            trivia_qa = load_dataset('trivia_qa', 'unfiltered.nocontext')
+
+            # The KILT IDs can then be mapped to the TriviaQA questions with:
+            triviaqa_map = {}
+
+            def add_missing_data(x, trivia_qa_subset, triviaqa_map):
+                i = triviaqa_map[x['id']]
+                x['input'] = trivia_qa_subset[i]['question']
+                x['output']['original_answer'] = trivia_qa_subset[i]['answer']['value']
+                return x
+
+            for k in ['train', 'validation', 'test']:
+                triviaqa_map = dict([(q_id, i) for i, q_id in enumerate(trivia_qa[k]['question_id'])])
+                kilt_triviaqa[k] = kilt_triviaqa[k].filter(lambda x: x['id'] in triviaqa_map)
+                kilt_triviaqa[k] = kilt_triviaqa[k].map(add_missing_data, fn_kwargs=dict(trivia_qa_subset=trivia_qa[k], triviaqa_map=triviaqa_map))
+            self.dataset = kilt_triviaqa[type_path]    
         else:
             raise NameError('Select the correct Dataset!')
         print(f'length of dataset: {len(self.dataset)}')
         if self.args.dataset == 'recentnews' and type_path=='validation':
             self.input_length = 50
             self.output_length = 10
-        elif self.args.dataset == 'lama' or self.args.dataset == 'recentprobe':
-            self.input_length = 50
-            self.output_length = 50
         else:
             self.input_length = input_length
             self.output_length = output_length
@@ -140,7 +160,10 @@ class Pretrain(Dataset):
                 else: 
                     input_ = input_pre
                     label_ = example_batch['output']
-                    target_ = input_pre + ' ' + example_batch['output'] 
+                    target_ = input_pre + ' ' + example_batch['output']
+            elif self.model_type == 'T5':
+                input_ = example_batch['input']
+                target_ = example_batch['output']
         elif self.args.dataset == 'recentprobe':
             if self.model_type == 'GPT2':
                 if self.type_path == 'train':
@@ -150,6 +173,12 @@ class Pretrain(Dataset):
                     input_ = example_batch['question']
                     label_ = example_batch['output']
                     target_ = example_batch['question'] + ' ' + example_batch['output']
+            elif self.model_type == 'T5':
+                input_ = example_batch['question']
+                target_ = example_batch['output']
+        elif self.args.dataset == 'triviaQA':
+            pprint.pprint(example_batch)
+            exit()
         else:
             raise Exception('Select the correct dataset!')
         source = self.tokenizer.batch_encode_plus([input_], max_length=self.input_length, 
@@ -179,6 +208,5 @@ class Pretrain(Dataset):
             label_ids = labels["input_ids"].squeeze()
         else:
             label_ids = -1
-
 
         return {"source_ids": source_ids, "source_mask": src_mask, "target_ids": target_ids, "target_mask": target_mask, "label_ids": label_ids}
