@@ -80,7 +80,7 @@ class Pretrain(Dataset):
             def add_missing_data(x, trivia_qa_subset, triviaqa_map):
                 i = triviaqa_map[x['id']]
                 x['input'] = trivia_qa_subset[i]['question']
-                x['output']['original_answer'] = trivia_qa_subset[i]['answer']['value']
+                #x['output']['original_answer'] = trivia_qa_subset[i]['answer']['value']
                 return x
 
             for k in ['train', 'validation', 'test']:
@@ -101,6 +101,9 @@ class Pretrain(Dataset):
         for i in range(100):
             sentinels.append(f'<extra_id_{i}>')
         self.sentinels = sentinels
+        with open('data/tqa_val_answers.json') as f:
+            ids_to_answers = json.load(f)
+        self.ids_to_answers = ids_to_answers
         
     def get_recent_val(self, lama_num, recent_num):
         if self.dataset_version=='debug':
@@ -176,9 +179,9 @@ class Pretrain(Dataset):
             elif self.model_type == 'T5':
                 input_ = example_batch['question']
                 target_ = example_batch['output']
-        elif self.args.dataset == 'triviaQA':
-            pprint.pprint(example_batch)
-            exit()
+        elif self.args.dataset == 'TriviaQA':
+            input_ = example_batch['input']
+            target_ = example_batch['output'][0]['answer']
         else:
             raise Exception('Select the correct dataset!')
         source = self.tokenizer.batch_encode_plus([input_], max_length=self.input_length, 
@@ -188,13 +191,20 @@ class Pretrain(Dataset):
         if self.type_path == 'validation' and self.model_type =='GPT2':
             labels = self.tokenizer.batch_encode_plus([label_], max_length=self.output_length, 
                                                     padding='max_length', truncation=True, return_tensors="pt")   
+        elif self.args.dataset== 'TriviaQA':
+            labels = example_batch['id']
+            answer_lst = []
+            for entry in example_batch['output']:
+                answer_lst.append(entry['answer'])
         else:
             labels = None                         
         return source, targets, labels
   
     def __getitem__(self, index):
-        if self.args.dataset == 'recentnews' and self.type_path =='validation':
+        if (self.args.dataset == 'recentnews' and self.type_path =='validation'):
             source, targets, labels = self.convert_to_features(self.dataset[index],index)
+        elif self.args.dataset == 'TriviaQA':
+            source, targets, labels = self.convert_to_features(self.dataset[index])
         else:
             source, targets, labels = self.convert_to_features(self.dataset.iloc[index])
         
@@ -205,7 +215,10 @@ class Pretrain(Dataset):
         target_mask = targets["attention_mask"].squeeze()
 
         if labels is not None:
-            label_ids = labels["input_ids"].squeeze()
+            if self.args.dataset== 'TriviaQA':
+                label_ids = labels
+            else:
+                label_ids = labels["input_ids"].squeeze()
         else:
             label_ids = -1
 

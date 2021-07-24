@@ -1,7 +1,7 @@
 {
     "finetuning_ratio": 0.01,
-    "input_length" : 80,
-    "output_length" : 80,
+    "input_length" : 25,
+    "output_length" : 4,
     "num_train_epochs" : 1,
     "output_dir" : "",
     "dataset" : "lama",

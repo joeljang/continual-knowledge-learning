@@ -139,6 +139,33 @@ class T5(pl.LightningModule):
         em_score /= len(predictions)
         subset_match_score /= len(predictions)
         return em_score*100, subset_match_score*100
+    
+    def calculate_scores_multipleanswers(self, predictions, ground_truths, ids):
+        em_score = 0
+        subset_match_score = 0
+        
+        for i in range(len(predictions)):
+            unique_id = ids[i]
+            answers = self.ids_to_answers[unique_id]
+            #ground_truths = ground_truths[i]
+            prediction = predictions[i]
+            em_correct = False
+            sm_correct = False
+            for answer in answers:
+                em  = self.exact_match_score(prediction, answer)
+                if em == 1:
+                    em_correct = True
+                sm = self.approx_match_score(prediction, answer)
+                if sm == 1:
+                    sm_correct = True
+            if em_correct:
+                em_score+=1
+            if sm_correct:
+                subset_match_score+=1
+        
+        em_score /= len(predictions)
+        subset_match_score /= len(predictions)
+        return em_score*100, subset_match_score*100
 
     def bleu(self, gen, ref):
         ''' 
@@ -161,8 +188,10 @@ class T5(pl.LightningModule):
 
     def get_dataset(self, tokenizer, type_path, num_samples, args):
         if args.mode == 'pretrain' or args.mode == 'finetune':
-            return Pretrain(tokenizer=tokenizer, type_path=type_path, num_samples=num_samples,  input_length=args.max_input_length, 
+            dataset = Pretrain(tokenizer=tokenizer, type_path=type_path, num_samples=num_samples,  input_length=args.max_input_length, 
                             output_length=args.max_output_length, args=args)
+            self.ids_to_answers = dataset.ids_to_answers
+            return dataset
         else:
             raise NameError('Select the correct mode please.')
 
@@ -238,6 +267,7 @@ class T5(pl.LightningModule):
         
         preds = self.ids_to_clean_text(generated_ids)
         targets = self.ids_to_clean_text(batch["target_ids"])
+        ids = batch["label_ids"]
             
         gen_time = (time.time() - t0) / batch["source_ids"].shape[0]  
     
@@ -245,7 +275,10 @@ class T5(pl.LightningModule):
 
         self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         summ_len = np.mean(self.lmap(len, generated_ids))
-        em_score, subset_match_score = self.calculate_scores(preds, targets)
+        if self.hparams.dataset == 'TriviaQA':
+            em_score, subset_match_score = self.calculate_scores_multipleanswers(preds, targets, ids)
+        else:
+            em_score, subset_match_score = self.calculate_scores(preds, targets)
         #bleu_score = self.bleu(preds,targets)
         self.em_score_list.append(em_score)
         self.subset_score_list.append(subset_match_score)
@@ -349,13 +382,12 @@ class T5(pl.LightningModule):
             optimizer = Adafactor(optimizer_grouped_parameters, lr=self.hparams.learning_rate, scale_parameter=False, relative_step=False)
 
         self.optimizer = optimizer
-        len_data = len(self.train_dataloader())
-        #denomniator = self.hparams.n_gpu * self.hparams.gradient_accumulation_steps
-        denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 3 # Do not decay learning rate to 0 for small set 
-        steps_per_epoch = ( len_data // denomniator ) + 1 
-        lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
-
         if self.hparams.use_lr_scheduling:
+            len_data = len(self.train_dataloader())
+            #denomniator = self.hparams.n_gpu * self.hparams.gradient_accumulation_steps
+            denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 3 # Do not decay learning rate to 0 for small set 
+            steps_per_epoch = ( len_data // denomniator ) + 1 
+            lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
             return [optimizer], [{"scheduler": lr_scheduler, "interval": "step", "name": "learning rate"}]
         else:
             return [optimizer]
@@ -364,7 +396,6 @@ class T5(pl.LightningModule):
         n_samples = self.n_obs['train']
         train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
         
-
         n_samples = self.n_obs['train']
         train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
         if self.hparams.method=='mixreview':
