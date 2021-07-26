@@ -41,31 +41,19 @@ class Pretrain(Dataset):
             else:
                 self.dataset = self.get_recent_val(-1,-1) #Getting validation data for both LAMA-entity and RecentProbe
         elif self.args.dataset == 'lama':
-            if self.dataset_version=='debug':
-                original = pd.read_csv('data/lama_template_debug.csv')
-                if type_path =='train':
-                    self.dataset = pd.read_csv('data/lama_template_debug.csv', nrows=int(len(original)*self.args.finetuning_ratio))
-                else:
-                    self.dataset = pd.read_csv('data/lama_template_debug.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))
+            original = pd.read_csv('data/lama_template.csv')
+            if type_path =='train':
+                self.dataset = pd.read_csv('data/lama_template.csv', nrows=int(len(original)*self.args.finetuning_ratio))
             else:
-                original = pd.read_csv('data/lama_template.csv')
-                if type_path =='train':
-                    self.dataset = pd.read_csv('data/lama_template.csv', nrows=int(len(original)*self.args.finetuning_ratio))
-                else:
-                    self.dataset = pd.read_csv('data/lama_template.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))
+                self.dataset = pd.read_csv('data/lama_template.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))
         elif self.args.dataset == 'recentprobe':
-            if self.dataset_version=='debug':
-                original = pd.read_csv('data/recentprobe_small.csv')
-                if type_path =='train':
-                    self.dataset = pd.read_csv('data/recentprobe_small.csv', nrows=int(len(original)*self.args.finetuning_ratio))
-                else:
-                    self.dataset = pd.read_csv('data/recentprobe_small.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))
+            rp_dir = 'data/recentprobe_small.csv'
+            #rp_dir = 'data/recentprobe_m_small.csv'
+            original = pd.read_csv(rp_dir)
+            if type_path =='train':
+                self.dataset = pd.read_csv(rpa_dir, nrows=int(len(original)*self.args.finetuning_ratio))
             else:
-                original = pd.read_csv('data/recentprobe_small.csv')
-                if type_path =='train':
-                    self.dataset = pd.read_csv('data/recentprobe_small.csv', nrows=int(len(original)*self.args.finetuning_ratio))
-                else:
-                    self.dataset = pd.read_csv('data/recentprobe_small.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))       
+                self.dataset = pd.read_csv(rp_dir, skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))       
         elif self.args.dataset== 'TriviaQA':
             # Get the KILT task datasets
             kilt_triviaqa = load_dataset("kilt_tasks", name="triviaqa_support_only")
@@ -109,13 +97,9 @@ class Pretrain(Dataset):
         if self.dataset_version=='debug':
             recent = pd.read_csv('data/recentprobe_m_debug.csv')
             lama = pd.read_csv('data/lama_template_debug.csv')
-        elif 'small' in self.dataset_version:
-            if self.dataset_version=='small':
-                recent = pd.read_csv('data/recentprobe_small.csv')
-            elif self.dataset_version=='small_m':
-                recent = pd.read_csv('data/recentprobe_m_small.csv')
-            else:
-                raise Exception('Select the proper dataset version.')
+        elif self.dataset_version=='small':
+            #recent = pd.read_csv('data/recentprobe_m_small.csv')
+            recent = pd.read_csv('data/recentprobe_small.csv')
             lama = pd.read_csv('data/lama_template.csv')         
         elif self.dataset_version=='full':
             recent = pd.read_csv('data/recentprobe_m_full.csv')
@@ -177,7 +161,7 @@ class Pretrain(Dataset):
                     label_ = example_batch['output']
                     target_ = example_batch['question'] + ' ' + example_batch['output']
             elif self.model_type == 'T5':
-                input_ = example_batch['question']
+                input_ = example_batch['input']
                 target_ = example_batch['output']
         elif self.args.dataset == 'TriviaQA':
             input_ = example_batch['input']

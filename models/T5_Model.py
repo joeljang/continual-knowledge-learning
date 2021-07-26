@@ -311,7 +311,7 @@ class T5(pl.LightningModule):
     def on_train_epoch_start(self):
         if self.hparams.method=='mixreview':
             train_set = self.train_dataloader().dataset
-            self.epoch+=1
+        self.epoch+=1
 
     def validation_step(self, batch, batch_idx):
         return self._generative_step(batch, batch_idx)

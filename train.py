@@ -147,7 +147,7 @@ if __name__ == '__main__':
         model.to('cuda')
         tokenizer = T5Tokenizer.from_pretrained(args.model_name_or_path)
         #Get Validation Data
-        if args.mode=='pretrain':
+        if args.mode=='pretrain' or args.mode=='finetune':
             dataset = Pretrain(tokenizer, 'validation', None, input_length=args.max_input_length, 
                             output_length=args.max_output_length, args=args)
         else:
