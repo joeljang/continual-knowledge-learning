@@ -134,11 +134,10 @@ class Pretrain(Dataset):
             recent = pd.read_csv('data/recentprobe_m_debug.csv')
             lama = pd.read_csv('data/lama_template_debug.csv')
         elif self.dataset_version=='small':
-            #recent = pd.read_csv('data/recentprobe_m_small.csv')
-            recent = pd.read_csv('data/recentprobe_small.csv')
+            recent = pd.read_csv('data/recentprobe_m_small.csv')
             lama = pd.read_csv('data/lama_template.csv')         
         elif self.dataset_version=='full':
-            recent = pd.read_csv('data/recentprobe_m_full.csv')
+            recent = pd.read_csv('data/recentprobe_m_small.csv')
             lama = pd.read_csv('data/lama_template.csv')
         dataset = []
         for index, row in lama.iterrows():

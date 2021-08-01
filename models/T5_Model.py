@@ -475,6 +475,8 @@ class T5(pl.LightningModule):
             len_data = len(self.train_dataloader())
             #denomniator = self.hparams.n_gpu * self.hparams.gradient_accumulation_steps
             denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 3 # Do not decay learning rate to 0 for small set 
+            if self.hparams.dataset_version=='full':
+                denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 2 # Do not decay learning rate to 0 for small set 
             steps_per_epoch = ( len_data // denomniator ) + 1 
             lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
             return [optimizer], [{"scheduler": lr_scheduler, "interval": "step", "name": "learning rate"}]
