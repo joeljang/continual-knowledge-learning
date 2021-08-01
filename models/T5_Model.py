@@ -17,6 +17,8 @@ import torch
 from Datasets import Pretrain
 from torch.utils.data import RandomSampler, SubsetRandomSampler
 from torch.utils.data import Dataset, DataLoader, ConcatDataset, Subset
+from rouge import Rouge
+from collections import Counter
 
 import random
 import argparse
@@ -125,24 +127,52 @@ class T5(pl.LightningModule):
                 match = 1
                 return match
         return match
+    
+    def accuracy_match_score(self, prediction, ground_truth):
+        return int(prediction.strip() == ground_truth.strip())
+
+    def _rougel_score(self, prediction, ground_truth):
+        rouge = Rouge()
+        # no normalization
+        try:
+            scores = rouge.get_scores(prediction, ground_truth, avg=True)
+        except ValueError:  # "Hypothesis is empty."
+            return 0.0
+        return scores["rouge-l"]["f"]
+    
+    def _f1_score(self, prediction, ground_truth):
+        prediction_tokens = self.normalize_answer(prediction).split()
+        ground_truth_tokens = self.normalize_answer(ground_truth).split()
+        common = Counter(prediction_tokens) & Counter(ground_truth_tokens)
+        num_same = sum(common.values())
+        if num_same == 0:
+            return 0
+        precision = 1.0 * num_same / len(prediction_tokens)
+        recall = 1.0 * num_same / len(ground_truth_tokens)
+        f1 = (2 * precision * recall) / (precision + recall)
+        return f1
 
     def calculate_scores(self, predictions, ground_truths):
         em_score = 0
         subset_match_score = 0
+        accuracy = 0
         
         for i in range(len(predictions)):
             ground_truth = ground_truths[i]
             prediction = predictions[i]
             em_score +=  self.exact_match_score(prediction, ground_truth)
             subset_match_score += self.approx_match_score(prediction, ground_truth)
+            accuracy += self.accuracy_match_score(prediction, ground_truth)
         
         em_score /= len(predictions)
         subset_match_score /= len(predictions)
-        return em_score*100, subset_match_score*100
+        accuracy /= len(predictions)
+        return em_score*100, subset_match_score*100, accuracy*100
     
     def calculate_scores_multipleanswers(self, predictions, ground_truths, ids):
         em_score = 0
         subset_match_score = 0
+        accuracy_score = 0
         
         for i in range(len(predictions)):
             unique_id = ids[i]
@@ -151,21 +181,56 @@ class T5(pl.LightningModule):
             prediction = predictions[i]
             em_correct = False
             sm_correct = False
+            accuracy_correct = False
             for answer in answers:
+                accuracy = self.accuracy_match_score(prediction, answer)
+                if accuracy == 1:
+                    accuracy_correct = True
                 em  = self.exact_match_score(prediction, answer)
                 if em == 1:
                     em_correct = True
                 sm = self.approx_match_score(prediction, answer)
                 if sm == 1:
                     sm_correct = True
+            if accuracy_correct:
+                accuracy_score+=1
             if em_correct:
                 em_score+=1
             if sm_correct:
                 subset_match_score+=1
         
+        accuracy_score /= len(predictions)
         em_score /= len(predictions)
         subset_match_score /= len(predictions)
-        return em_score*100, subset_match_score*100
+        return em_score*100, subset_match_score*100, accuracy_score*100
+
+    def calculate_rouge_multipleanswers(self, predictions, ground_truths, ids):
+        rouge_score = 0 
+        for i in range(len(predictions)):
+            unique_id = ids[i]
+            answers = self.ids_to_answers[unique_id]
+            #ground_truths = ground_truths[i]
+            prediction = predictions[i]
+            rouge_local_score = 0
+            for answer in answers:
+                rouge = self._rougel_score(prediction, answer)
+                if rouge > rouge_local_score:
+                    rouge_local_score = rouge 
+            rouge_score += rouge_local_score
+        rouge_score /= len(predictions)
+        return rouge_score*100
+
+    def calculate_f1_scores(self, predictions, ground_truths, ids):
+        f1_score = 0 
+        for i in range(len(predictions)):
+            unique_id = ids[i]
+            ground_truth = ground_truths[i]
+            prediction = predictions[i]
+            f1_score += self._f1_score(prediction, ground_truth)
+
+        f1_score /= len(predictions)
+        return f1_score*100
+
 
     def bleu(self, gen, ref):
         ''' 
@@ -275,16 +340,35 @@ class T5(pl.LightningModule):
 
         self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         summ_len = np.mean(self.lmap(len, generated_ids))
-        if self.hparams.dataset == 'TriviaQA':
-            em_score, subset_match_score = self.calculate_scores_multipleanswers(preds, targets, ids)
+        if self.hparams.dataset == 'TriviaQA' or self.hparams.dataset == 'zsRE' or self.hparams.dataset == 'TREX' or self.hparams.dataset == 'NQ' or self.hparams.dataset == 'HotpotQA':
+            em_score, subset_match_score, accuracy = self.calculate_scores_multipleanswers(preds, targets, ids)
+            rouge_score = 0
+            f1_score = 0
+        elif self.hparams.dataset =='ELI5':
+            rouge_score = self.calculate_rouge_multipleanswers(preds, targets, ids)
+            em_score = 0
+            subset_match_score = 0
+            accuracy = 0
+            f1_score = 0
+        elif self.hparams.dataset =='WOW':
+            f1_score = self.calculate_f1_scores(preds, targets, ids)
+            rouge_score = 0
+            em_score = 0
+            subset_match_score = 0
+            accuracy = 0
         else:
-            em_score, subset_match_score = self.calculate_scores(preds, targets)
+            em_score, subset_match_score, accuracy = self.calculate_scores(preds, targets)
+            rouge_score = 0
+            f1_score = 0
         #bleu_score = self.bleu(preds,targets)
         self.em_score_list.append(em_score)
         self.subset_score_list.append(subset_match_score)
         
         em_score = torch.tensor(em_score,dtype=torch.float32)
         subset_match_score = torch.tensor(subset_match_score,dtype=torch.float32)
+        accuracy = torch.tensor(accuracy,dtype=torch.float32)
+        rouge_score = torch.tensor(rouge_score, dtype=torch.float32)
+        f1_score = torch.tensor(f1_score, dtype=torch.float32)
         #bleu_score = torch.tensor(bleu_score,dtype=torch.float32)
         if self.hparams.dataset_version=='debug':
             lama_len = 1202
@@ -297,7 +381,12 @@ class T5(pl.LightningModule):
             else:
                 self.log('recent_em_score', em_score, prog_bar=True, logger=True)
                 self.log('recent_subset_match_score', subset_match_score, prog_bar=True, logger=True)
+        elif self.hparams.dataset == 'ELI5':
+            self.log('rouge_score', rouge_score, prog_bar=True, logger=True)
+        elif self.hparams.dataset == 'WOW':
+            self.log('f1_score', f1_score, prog_bar=True, logger=True)
         else:
+            self.log('accuracy', accuracy, prog_bar=True, logger=True)
             self.log('em_score', em_score, prog_bar=True, logger=True)
             self.log('subset_match_score', subset_match_score, prog_bar=True, logger=True)
         #self.log('bleu_score', bleu_score, prog_bar=True, logger=True)

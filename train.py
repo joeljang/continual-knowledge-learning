@@ -147,7 +147,7 @@ if __name__ == '__main__':
         model.to('cuda')
         tokenizer = T5Tokenizer.from_pretrained(args.model_name_or_path)
         #Get Validation Data
-        if args.mode=='pretrain':
+        if args.mode=='pretrain' or args.mode=='finetune':
             dataset = Pretrain(tokenizer, 'validation', None, input_length=args.max_input_length, 
                             output_length=args.max_output_length, args=args)
         else:
@@ -157,6 +157,7 @@ if __name__ == '__main__':
         
         total_cnt = 0
         rp_cnt = 0
+        accuracy_correct_num = 0
         em_correct_num = 0
         subset_correct_num = 0
         rp_em_correct_num = 0
@@ -196,23 +197,36 @@ if __name__ == '__main__':
                 predicted = clean_up(dec[i])
                 em = model.exact_match_score(predicted, ground_truth)
                 subset = model.approx_match_score(predicted, ground_truth)         
-                print(f'{total_cnt} INPUT : {lines[0]}')
+                print(f'{total_cnt} INPUT : {lines}')
                 print(f'GROUD TRUTH: {ground_truth}, MODEL OUTPUT: {predicted}')
-                if total_cnt < 20725:
+                if args.dataset == 'recentnews':
+                    if total_cnt < 20725:
+                        if em == 1:
+                            em_correct_num+=1
+                        if subset == 1:
+                            subset_correct_num+=1
+                    else:
+                        rp_cnt+=1
+                        if em == 1:
+                            rp_em_correct_num+=1
+                        if subset == 1:
+                            rp_subset_correct_num+=1
+
+                    print(f'Number of total validation data: {total_cnt}')
+                    print(f'Number of correct lama predictions out of 20725 : {em_correct_num, subset_correct_num}. Percentage : {em_correct_num / 20725, subset_correct_num / 20725}')
+                    print(f'Number of correct recentprobe predictions out of {rp_cnt} : {rp_em_correct_num, rp_subset_correct_num}. Percentage : {rp_em_correct_num / rp_cnt, rp_subset_correct_num / rp_cnt}')
+                else:
+                    # zero-shot accuracy for WnED and CWEB
+                    accuracy = model.accuracy_match_score(predicted, ground_truth)
+                    if accuracy == 1:
+                        accuracy_correct_num +=1
                     if em == 1:
                         em_correct_num+=1
                     if subset == 1:
-                        subset_correct_num+=1
-                else:
-                    rp_cnt+=1
-                    if em == 1:
-                        rp_em_correct_num+=1
-                    if subset == 1:
-                        rp_subset_correct_num+=1
+                        subset_correct_num+=1  
+                    print(f'Number of total validation data: {total_cnt}')
+                    print(f'Number of correct predictions: {accuracy_correct_num, em_correct_num, subset_correct_num}. Percentage : {accuracy_correct_num / total_cnt, em_correct_num / total_cnt, subset_correct_num / total_cnt}')
 
-        print(f'Number of total validation data: {total_cnt}')
-        print(f'Number of correct lama predictions out of 20725 : {em_correct_num, subset_correct_num}. Percentage : {em_correct_num / 20725, subset_correct_num / 20725}')
-        print(f'Number of correct recentprobe predictions out of {rp_cnt} : {rp_em_correct_num, rp_subset_correct_num}. Percentage : {rp_em_correct_num / rp_cnt, rp_subset_correct_num / rp_cnt}')
     else:
         set_seed(40)
         if args.checkpoint_path!="":
