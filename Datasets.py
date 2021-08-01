@@ -76,6 +76,53 @@ class Pretrain(Dataset):
                 kilt_triviaqa[k] = kilt_triviaqa[k].filter(lambda x: x['id'] in triviaqa_map)
                 kilt_triviaqa[k] = kilt_triviaqa[k].map(add_missing_data, fn_kwargs=dict(trivia_qa_subset=trivia_qa[k], triviaqa_map=triviaqa_map))
             self.dataset = kilt_triviaqa[type_path]    
+            with open('data/tqa_val_answers.json') as f:
+                ids_to_answers = json.load(f)
+        elif self.args.dataset== 'fever':
+            kilt_fever = load_dataset("kilt_tasks", name="fever")
+            self.dataset = kilt_fever[type_path]
+            ids_to_answers = None
+        elif self.args.dataset== 'AY2':
+            kilt_ay2 = load_dataset("kilt_tasks", name='aidayago2')
+            self.dataset = kilt_ay2[type_path]
+            ids_to_answers = None
+        elif self.args.dataset== 'WNED':
+            kilt_wned = load_dataset("kilt_tasks", name="wned")
+            self.dataset = kilt_wned[type_path]
+            ids_to_answers = None
+        elif self.args.dataset== 'CWEB':
+            kilt_cweb = load_dataset("kilt_tasks", name="cweb")
+            self.dataset = kilt_cweb[type_path]
+            ids_to_answers = None
+        elif self.args.dataset== 'TREX':
+            kilt_trex = load_dataset("kilt_tasks", name="trex")
+            self.dataset = kilt_trex[type_path]
+            with open('data/trex_val_answers.json') as f:
+                ids_to_answers = json.load(f)  
+        elif self.args.dataset== 'zsRE':
+            kilt_zsre = load_dataset("kilt_tasks", name="structured_zeroshot")
+            self.dataset = kilt_zsre[type_path]
+            with open('data/zsre_val_answers.json') as f:
+                ids_to_answers = json.load(f)  
+        elif self.args.dataset== 'NQ':
+            kilt_nq = load_dataset("kilt_tasks", name="nq")
+            self.dataset = kilt_nq[type_path]
+            with open('data/nq_val_answers.json') as f:
+                ids_to_answers = json.load(f)  
+        elif self.args.dataset== 'HotpotQA':
+            kilt_hotqa = load_dataset("kilt_tasks", name="hotpotqa")
+            self.dataset = kilt_hotqa[type_path]
+            with open('data/hotpotqa_val_answers.json') as f:
+                ids_to_answers = json.load(f)  
+        elif self.args.dataset== 'ELI5':
+            kilt_eli5 = load_dataset("kilt_tasks", name="eli5")
+            self.dataset = kilt_eli5[type_path]
+            with open('data/eli5_val_answers.json') as f:
+                ids_to_answers = json.load(f)  
+        elif self.args.dataset== 'WOW':
+            kilt_wow = load_dataset("kilt_tasks", name="wow", ignore_verifications=True)
+            self.dataset = kilt_wow[type_path]
+            ids_to_answers = None
         else:
             raise NameError('Select the correct Dataset!')
         print(f'length of dataset: {len(self.dataset)}')
@@ -89,8 +136,6 @@ class Pretrain(Dataset):
         for i in range(100):
             sentinels.append(f'<extra_id_{i}>')
         self.sentinels = sentinels
-        with open('data/tqa_val_answers.json') as f:
-            ids_to_answers = json.load(f)
         self.ids_to_answers = ids_to_answers
         
     def get_recent_val(self, lama_num, recent_num):
@@ -163,7 +208,8 @@ class Pretrain(Dataset):
             elif self.model_type == 'T5':
                 input_ = example_batch['input']
                 target_ = example_batch['output']
-        elif self.args.dataset == 'TriviaQA':
+        elif (self.args.dataset== 'TriviaQA' or self.args.dataset== 'fever' or self.args.dataset== 'AY2' or self.args.dataset== 'WNED' or self.args.dataset== 'CWEB' 
+        or self.args.dataset== 'TREX' or self.args.dataset== 'zsRE' or self.args.dataset== 'NQ' or self.args.dataset== 'HotpotQA' or self.args.dataset== 'ELI5' or self.args.dataset== 'WOW'):
             input_ = example_batch['input']
             target_ = example_batch['output'][0]['answer']
         else:
@@ -175,7 +221,8 @@ class Pretrain(Dataset):
         if self.type_path == 'validation' and self.model_type =='GPT2':
             labels = self.tokenizer.batch_encode_plus([label_], max_length=self.output_length, 
                                                     padding='max_length', truncation=True, return_tensors="pt")   
-        elif self.args.dataset== 'TriviaQA':
+        elif (self.args.dataset== 'TriviaQA' or self.args.dataset== 'fever' or self.args.dataset== 'AY2' or self.args.dataset== 'WNED' or self.args.dataset== 'CWEB' 
+        or self.args.dataset== 'TREX' or self.args.dataset== 'zsRE' or self.args.dataset== 'NQ' or self.args.dataset== 'HotpotQA' or self.args.dataset== 'ELI5' or self.args.dataset== 'WOW'):
             labels = example_batch['id']
             answer_lst = []
             for entry in example_batch['output']:
@@ -187,7 +234,8 @@ class Pretrain(Dataset):
     def __getitem__(self, index):
         if (self.args.dataset == 'recentnews' and self.type_path =='validation'):
             source, targets, labels = self.convert_to_features(self.dataset[index],index)
-        elif self.args.dataset == 'TriviaQA':
+        elif (self.args.dataset== 'TriviaQA' or self.args.dataset== 'fever' or self.args.dataset== 'AY2' or self.args.dataset== 'WNED' or self.args.dataset== 'CWEB' 
+        or self.args.dataset== 'TREX' or self.args.dataset== 'zsRE' or self.args.dataset== 'NQ' or self.args.dataset== 'HotpotQA' or self.args.dataset== 'ELI5' or self.args.dataset== 'WOW'):
             source, targets, labels = self.convert_to_features(self.dataset[index])
         else:
             source, targets, labels = self.convert_to_features(self.dataset.iloc[index])
@@ -199,7 +247,8 @@ class Pretrain(Dataset):
         target_mask = targets["attention_mask"].squeeze()
 
         if labels is not None:
-            if self.args.dataset== 'TriviaQA':
+            if (self.args.dataset== 'TriviaQA' or self.args.dataset== 'fever' or self.args.dataset== 'AY2' or self.args.dataset== 'WNED' or self.args.dataset== 'CWEB' 
+            or self.args.dataset== 'TREX' or self.args.dataset== 'zsRE' or self.args.dataset== 'NQ' or self.args.dataset== 'HotpotQA' or self.args.dataset== 'ELI5' or self.args.dataset== 'WOW'):
                 label_ids = labels
             else:
                 label_ids = labels["input_ids"].squeeze()
