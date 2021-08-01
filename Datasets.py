@@ -3,7 +3,6 @@ import pandas as pd
 import json
 import re
 import math 
-#from transformers import pipeline
 import os
 import random
 import numpy as np
@@ -23,6 +22,7 @@ class Pretrain(Dataset):
         elif 'gpt2' in args.model_name_or_path:
             self.model_type='GPT2'
         dataset_v = ['debug', 'small', 'full']
+        ids_to_answers = None      
         if not self.dataset_version in dataset_v:
             raise Exception(f'Provided the correct dataset version among {dataset_v}')
         if self.args.dataset == 'recentnews':
@@ -45,15 +45,15 @@ class Pretrain(Dataset):
             if type_path =='train':
                 self.dataset = pd.read_csv('data/lama_template.csv', nrows=int(len(original)*self.args.finetuning_ratio))
             else:
-                self.dataset = pd.read_csv('data/lama_template.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))
+                self.dataset = pd.read_csv('data/lama_template.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))         
         elif self.args.dataset == 'recentprobe':
             rp_dir = 'data/recentprobe_small.csv'
             #rp_dir = 'data/recentprobe_m_small.csv'
             original = pd.read_csv(rp_dir)
             if type_path =='train':
-                self.dataset = pd.read_csv(rpa_dir, nrows=int(len(original)*self.args.finetuning_ratio))
+                self.dataset = pd.read_csv(rp_dir, nrows=int(len(original)*self.args.finetuning_ratio))
             else:
-                self.dataset = pd.read_csv(rp_dir, skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))       
+                self.dataset = pd.read_csv(rp_dir, skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio)) 
         elif self.args.dataset== 'TriviaQA':
             # Get the KILT task datasets
             kilt_triviaqa = load_dataset("kilt_tasks", name="triviaqa_support_only")
@@ -81,19 +81,15 @@ class Pretrain(Dataset):
         elif self.args.dataset== 'fever':
             kilt_fever = load_dataset("kilt_tasks", name="fever")
             self.dataset = kilt_fever[type_path]
-            ids_to_answers = None
         elif self.args.dataset== 'AY2':
             kilt_ay2 = load_dataset("kilt_tasks", name='aidayago2')
             self.dataset = kilt_ay2[type_path]
-            ids_to_answers = None
         elif self.args.dataset== 'WNED':
             kilt_wned = load_dataset("kilt_tasks", name="wned")
             self.dataset = kilt_wned[type_path]
-            ids_to_answers = None
         elif self.args.dataset== 'CWEB':
             kilt_cweb = load_dataset("kilt_tasks", name="cweb")
             self.dataset = kilt_cweb[type_path]
-            ids_to_answers = None
         elif self.args.dataset== 'TREX':
             kilt_trex = load_dataset("kilt_tasks", name="trex")
             self.dataset = kilt_trex[type_path]
@@ -122,20 +118,15 @@ class Pretrain(Dataset):
         elif self.args.dataset== 'WOW':
             kilt_wow = load_dataset("kilt_tasks", name="wow", ignore_verifications=True)
             self.dataset = kilt_wow[type_path]
-            ids_to_answers = None
         else:
             raise NameError('Select the correct Dataset!')
-        print(f'length of dataset: {len(self.dataset)}')
+        print(f'Length of dataset retrieving is.. {len(self.dataset)}')
         if self.args.dataset == 'recentnews' and type_path=='validation':
             self.input_length = 50
             self.output_length = 10
         else:
             self.input_length = input_length
             self.output_length = output_length
-        sentinels=[]
-        for i in range(100):
-            sentinels.append(f'<extra_id_{i}>')
-        self.sentinels = sentinels
         self.ids_to_answers = ids_to_answers
         
     def get_recent_val(self, lama_num, recent_num):

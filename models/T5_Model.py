@@ -496,8 +496,6 @@ class T5(pl.LightningModule):
             print("mix len is ", mix_len)
             train_indices = list(range(train_len))
             indices = train_indices + pretrain_indices
-            # print("final len is ", indices)
-            # sampler = SubsetRandomSampler(indices)
             subset_dataset = Subset(mixed_dataset, indices)
             dataloader = DataLoader(subset_dataset, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
             print("dataset length is ", len(dataloader.dataset))
