@@ -1,17 +1,20 @@
 # Continual Knowledge Learning
 
-To download the data, use azcopy:
+In order to set up environment, 
 ```
-#if azcopy version == 10.x
-azcopy cp https://continual.blob.core.windows.net/recentnews/data ./ --recursive 
-#if acopy == 7.x
-azcopy --source https://continual.blob.core.windows.net/recentnews/data --destination ./data --recursive 
+conda create -n ckl python=3.8
+conda activate ckl
+pip install -r requirements.txt
 ```
-Azcopy Docs : docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-ref-azcopy-copy?toc=/azure/storage/blobs/toc.json
+
+To download the data used for ALL of the experiments, 
+```
+python download_data.py
+```
 
 Log experiments with wandb: https://www.wandb.com/
 
-To run the experiments, run the following command:
+To run the experiments,
 ```
-python train.py --config configs/recentnews.json
+python train.py --config configs/t5_baseline.json
 ```
