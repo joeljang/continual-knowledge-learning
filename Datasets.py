@@ -7,11 +7,12 @@ import os
 import random
 import numpy as np
 import pprint
+import random
 
 from datasets import load_dataset
 
 class Pretrain(Dataset):
-    def __init__(self, tokenizer, type_path, num_samples, input_length, output_length, args, print_text=False):
+    def __init__(self, tokenizer, type_path, num_samples, input_length, output_length, args, length=None, print_text=False):
         self.args = args
         self.tokenizer = tokenizer
         self.type_path = type_path
@@ -35,9 +36,17 @@ class Pretrain(Dataset):
                     self.dataset = pd.read_csv('data/recent_news_full.csv')
             elif type_path =='pretrain':
                 if self.dataset_version=='debug':
+                    total_line = 3256
+                    skip = sorted(random.sample(range(1,total_line+1),total_line-length))
                     self.dataset = pd.read_csv('data/wikipedia_pretrain_debug.csv')
-                else:
-                    self.dataset = pd.read_csv('data/wikipedia_pretrain.csv')
+                elif self.dataset_version=='small':
+                    total_line = 802776
+                    skip = sorted(random.sample(range(1,total_line+1),total_line-length))
+                    self.dataset = pd.read_csv('data/wikipedia_pretrain_small.csv', usecols=['input', 'output'], skiprows=skip)
+                elif self.dataset_version=='full':
+                    total_line = 8021155
+                    skip = sorted(random.sample(range(1,total_line+1),total_line-length))
+                    self.dataset = pd.read_csv('data/wikipedia_pretrain_full.csv', usecols=['input', 'output'], skiprows=skip)
             else:
                 self.dataset = self.get_recent_val(-1,-1) #Getting validation data for both LAMA-entity and RecentProbe
         elif self.args.dataset == 'lama':
