@@ -94,7 +94,10 @@ if __name__ == '__main__':
     args = argparse.Namespace(**args_dict)
 
     # Defining how to save model checkpoints during training. Details: https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.model_checkpoint.html 
-    callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True)]
+    if args.dataset_version=='full':
+        callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True, every_n_val_epochs=1)]
+    else:
+        callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True)]
     checkpoint_callback = True
 
     if args.output_dir=="":
@@ -211,10 +214,6 @@ if __name__ == '__main__':
                             rp_em_correct_num+=1
                         if subset == 1:
                             rp_subset_correct_num+=1
-
-                    print(f'Number of total validation data: {total_cnt}')
-                    print(f'Number of correct lama predictions out of 20725 : {em_correct_num, subset_correct_num}. Percentage : {em_correct_num / 20725, subset_correct_num / 20725}')
-                    print(f'Number of correct recentprobe predictions out of {rp_cnt} : {rp_em_correct_num, rp_subset_correct_num}. Percentage : {rp_em_correct_num / rp_cnt, rp_subset_correct_num / rp_cnt}')
                 else:
                     # zero-shot accuracy for WnED and CWEB
                     accuracy = model.accuracy_match_score(predicted, ground_truth)
@@ -224,9 +223,13 @@ if __name__ == '__main__':
                         em_correct_num+=1
                     if subset == 1:
                         subset_correct_num+=1  
-                    print(f'Number of total validation data: {total_cnt}')
-                    print(f'Number of correct predictions: {accuracy_correct_num, em_correct_num, subset_correct_num}. Percentage : {accuracy_correct_num / total_cnt, em_correct_num / total_cnt, subset_correct_num / total_cnt}')
-
+            if args.dataset == 'recentnews':
+                print(f'Number of total validation data: {total_cnt}')
+                print(f'Number of correct lama predictions out of 20725 : {em_correct_num, subset_correct_num}. Percentage : {em_correct_num / 20725, subset_correct_num / 20725}')
+                print(f'Number of correct recentprobe predictions out of {rp_cnt} : {rp_em_correct_num, rp_subset_correct_num}. Percentage : {rp_em_correct_num / rp_cnt, rp_subset_correct_num / rp_cnt}')
+            else:
+                print(f'Number of total validation data: {total_cnt}')
+                print(f'Number of correct predictions: {accuracy_correct_num, em_correct_num, subset_correct_num}. Percentage : {accuracy_correct_num / total_cnt, em_correct_num / total_cnt, subset_correct_num / total_cnt}')
     else:
         set_seed(40)
         if args.checkpoint_path!="":
