@@ -18,3 +18,24 @@ To run the experiments,
 ```
 python train.py --config configs/t5_baseline.json
 ```
+
+For LG AI,
+```
+To check if experiment works & getting logged to wandb,
+python train.py --config configs/lgai/test.json #Using GPU num 0
+
+VM instance #1 (~35 hours)
+python train.py --config configs/lgai/1_baseline.json #Using GPU num 0,1,2,3
+python train.py --config configs/lgai/1_kadapters.json #Using GPU num 4,5,6,7
+
+VM instance #1 (~30 hours)
+python train.py --config configs/lgai/2_lora.json #Using GPU num 0,1,2,3
+python train.py --config configs/lgai/2_m_small.json #Using GPU num 4,5,6,7
+
+VM instance #1 (~40 hours)
+python train.py --config configs/lgai/3_m_large.json #Using GPU num 0,1,2,3
+python train.py --config configs/lgai/3_recadam.json #Using GPU num 4,5,6,7
+
+VM instance #2 (~100 hours)
+python train.py --config configs/lgai/4_mixreview.json #Using GPU num 0,1,2,3,4,5,6,7
+```
