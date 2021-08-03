@@ -7,6 +7,9 @@ conda activate ckl
 pip install -r requirements.txt
 ```
 
+Also, make sure to install the correct version of pytorch corresponding to the CUDA version and environment:
+https://pytorch.org/
+
 To download the data used for ALL of the experiments, 
 ```
 python download_data.py
