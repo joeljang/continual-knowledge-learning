@@ -93,6 +93,7 @@ class T5(pl.LightningModule):
                     pruned = torch.where(pruned==1, pruned, zeros)
                     trainable_param_cnt+=torch.nonzero(pruned).size(0)
                     self.pruning_params[name] = pruned
+            print(f'Trainable parameters count: {trainable_param_cnt}')
             self.log("trainable_param_count", trainable_param_cnt)
         self.step_count = 0
         self.output_dir = self.hparams.output_dir
