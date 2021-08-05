@@ -51,6 +51,12 @@ if __name__ == '__main__':
     if 'finetuning_ratio' not in hparam:
         hparam.finetuning_ratio=0.0
 
+    #If using pruning method, no grad_norm
+    if hparam.method=='prune':
+        grad_norm = None
+    else:
+        grad_norm = 0.5
+        
     #Setting configurations
     args_dict = dict(
         output_dir=hparam.output_dir, # Path to save the checkpoints
@@ -85,7 +91,7 @@ if __name__ == '__main__':
         early_stop_callback=False,
         use_deepspeed=hparam.use_deepspeed,
         opt_level='O1', # you can find out more on optimisation levels here https://nvidia.github.io/apex/amp.html#opt-levels-and-properties
-        max_grad_norm=0.5, # if you enable 16-bit training then set this to a sensible value, 0.5 is a good default
+        max_grad_norm=grad_norm, # if you enable 16-bit training then set this to a sensible value, 0.5 is a good default
         seed=42,
         check_validation_only=hparam.check_validation,
         checkpoint_path=hparam.checkpoint_path,

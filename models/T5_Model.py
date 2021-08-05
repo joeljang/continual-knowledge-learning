@@ -4,6 +4,7 @@ from models.Modular_Small_T5 import T5ForConditionalGeneration as T5_Modular_Sma
 from models.Kadapter_T5 import T5ForConditionalGeneration as T5_Kadapter
 from models.Lora_T5 import T5ForConditionalGeneration as T5_Lora
 from models.RecAdam import RecAdam, anneal_function
+import torch.nn.utils.prune as prune
 from transformers import (
     AdamW,
     Adafactor,
@@ -38,6 +39,7 @@ class T5(pl.LightningModule):
         self.mix_ratio = 4
         self.mix_decay = 0.7
         self.epoch = 0
+        self.pruning_params = {}
 
         if hparams.method=='modular':
             self.model = T5_Modular.from_pretrained(hparams.model_name_or_path)
@@ -77,7 +79,19 @@ class T5(pl.LightningModule):
             for name, param in self.model.named_parameters():
                 if 'lora' in name:
                     param.requires_grad = True
-        
+        elif hparams.method=='prune':
+            # Important: This property activates manual optimization.
+            self.automatic_optimization = False
+            #trainable_param_cnt=0
+            pruner = prune.L1Unstructured(amount=0.002)
+            for name, param in self.model.named_parameters():
+                if 'SelfAttention' in name and not ('decoder' in name):
+                    ones = torch.ones(param.data.size())
+                    zeros = torch.zeros(param.data.size())
+                    pruned = pruner.prune(param.data)
+                    pruned = torch.where(pruned!=0, pruned, ones)
+                    pruned = torch.where(pruned==1, pruned, zeros)
+                    self.pruning_params[name] = pruned
 
         self.step_count = 0
         self.output_dir = self.hparams.output_dir
@@ -393,9 +407,26 @@ class T5(pl.LightningModule):
     
 
     def training_step(self, batch, batch_idx):
-        loss = self._step(batch)
-        self.log("loss", loss)
-        return loss
+        if self.hparams.method=='prune':
+            opt = self.optimizers()
+            opt.zero_grad()
+            loss = self._step(batch)
+            self.manual_backward(loss)
+            self.zero_grads()
+            opt.step()
+            return loss
+        else:
+            loss = self._step(batch)
+            self.log("loss", loss)
+            return loss
+
+    def zero_grads(self):
+        for name, param in self.model.named_parameters():
+            if name in self.pruning_params:
+                pruned = self.pruning_params[name]
+                device = 'cuda:'+str(param.grad.get_device())
+                pruned = pruned.to(device=device)
+                param.grad = param.grad * pruned
 
     def on_train_epoch_start(self):
         if self.hparams.method=='mixreview':
@@ -470,7 +501,7 @@ class T5(pl.LightningModule):
             
             optimizer = Adafactor(optimizer_grouped_parameters, lr=self.hparams.learning_rate, scale_parameter=False, relative_step=False)
 
-        self.optimizer = optimizer
+        #self.optimizer = optimizer
         if self.hparams.use_lr_scheduling:
             len_data = len(self.train_dataloader())
             #denomniator = self.hparams.n_gpu * self.hparams.gradient_accumulation_steps
