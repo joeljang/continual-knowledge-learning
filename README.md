@@ -8,7 +8,13 @@ pip install -r requirements.txt
 ```
 
 Also, make sure to install the correct version of pytorch corresponding to the CUDA version and environment:
-https://pytorch.org/
+Refer to https://pytorch.org/
+```
+#For CUDA 10.x
+pip3 install torch torchvision torchaudio
+#For CUDA 11.x
+pip3 install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
+```
 
 To download the data used for ALL of the experiments, 
 ```
@@ -24,7 +30,7 @@ python train.py --config configs/t5_baseline.json
 
 For LG AI,
 ```
-To check if experiment works & getting logged to wandb,
+#To check if experiment works & getting logged to wandb,
 python train.py --config configs/lgai/test.json #Using GPU num 0
 
 VM instance #1 (~35 hours)
