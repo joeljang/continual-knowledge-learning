@@ -50,6 +50,8 @@ if __name__ == '__main__':
     #Init configs that are not given
     if 'finetuning_ratio' not in hparam:
         hparam.finetuning_ratio=0.0
+    if 'finetuning_ratio' not in hparam:
+        hparam.prune_ratio=0.0
 
     #If using pruning method, no grad_norm
     if hparam.method=='prune':
@@ -63,6 +65,7 @@ if __name__ == '__main__':
         dataset=hparam.dataset,
         dataset_version = hparam.dataset_version,
         finetuning_ratio = hparam.finetuning_ratio,
+        prune_ratio = hparam.prune_ratio,
         model_name_or_path=hparam.model,
         method=hparam.method,
         freeze_level=hparam.freeze_level,

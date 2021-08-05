@@ -82,8 +82,8 @@ class T5(pl.LightningModule):
         elif hparams.method=='prune':
             # Important: This property activates manual optimization.
             self.automatic_optimization = False
-            #trainable_param_cnt=0
-            pruner = prune.L1Unstructured(amount=0.002)
+            trainable_param_cnt=0
+            pruner = prune.L1Unstructured(amount=hparams.prune_ratio)
             for name, param in self.model.named_parameters():
                 if 'SelfAttention' in name and not ('decoder' in name):
                     ones = torch.ones(param.data.size())
@@ -91,8 +91,9 @@ class T5(pl.LightningModule):
                     pruned = pruner.prune(param.data)
                     pruned = torch.where(pruned!=0, pruned, ones)
                     pruned = torch.where(pruned==1, pruned, zeros)
+                    trainable_param_cnt+=torch.nonzero(pruned).size(0)
                     self.pruning_params[name] = pruned
-
+            self.log("trainable_param_count", trainable_param_cnt)
         self.step_count = 0
         self.output_dir = self.hparams.output_dir
             
@@ -414,11 +415,10 @@ class T5(pl.LightningModule):
             self.manual_backward(loss)
             self.zero_grads()
             opt.step()
-            return loss
         else:
             loss = self._step(batch)
-            self.log("loss", loss)
-            return loss
+        self.log("loss", loss)
+        return loss
 
     def zero_grads(self):
         for name, param in self.model.named_parameters():
