@@ -19,7 +19,13 @@ pip3 install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 -f h
 To download the data used for ALL of the experiments, 
 ```
 python download_data.py
+
+#if using azcopy
+azcopy cp https://continual.blob.core.windows.net/recentnews/recentnews ./ --recursive
+azcopy cp https://continual.blob.core.windows.net/recentnews/model_checkpoints ./ --recursive
 ```
+
+Azcopy docs : https://docs.microsoft.com/en-us/azure/storage/common/storage-ref-azcopy-copy?toc=/azure/storage/blobs/toc.json
 
 Log experiments with wandb: https://www.wandb.com/
 
