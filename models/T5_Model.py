@@ -4,6 +4,7 @@ from models.Modular_Small_T5 import T5ForConditionalGeneration as T5_Modular_Sma
 from models.Kadapter_T5 import T5ForConditionalGeneration as T5_Kadapter
 from models.Lora_T5 import T5ForConditionalGeneration as T5_Lora
 from models.RecAdam import RecAdam, anneal_function
+import torch.nn.utils.prune as prune
 from transformers import (
     AdamW,
     Adafactor,
@@ -38,6 +39,7 @@ class T5(pl.LightningModule):
         self.mix_ratio = 4
         self.mix_decay = 0.7
         self.epoch = 0
+        self.pruning_params = {}
 
         if hparams.method=='modular':
             self.model = T5_Modular.from_pretrained(hparams.model_name_or_path)
@@ -77,8 +79,22 @@ class T5(pl.LightningModule):
             for name, param in self.model.named_parameters():
                 if 'lora' in name:
                     param.requires_grad = True
-        
-
+        elif hparams.method=='prune':
+            # Important: This property activates manual optimization.
+            self.automatic_optimization = False
+            trainable_param_cnt=0
+            pruner = prune.L1Unstructured(amount=hparams.prune_ratio)
+            for name, param in self.model.named_parameters():
+                if 'SelfAttention' in name and not ('decoder' in name):
+                    ones = torch.ones(param.data.size())
+                    zeros = torch.zeros(param.data.size())
+                    pruned = pruner.prune(param.data)
+                    pruned = torch.where(pruned!=0, pruned, ones)
+                    pruned = torch.where(pruned==1, pruned, zeros)
+                    trainable_param_cnt+=torch.nonzero(pruned).size(0)
+                    self.pruning_params[name] = pruned
+            print(f'Trainable parameters count: {trainable_param_cnt}')
+            self.log("trainable_param_count", trainable_param_cnt)
         self.step_count = 0
         self.output_dir = self.hparams.output_dir
             
@@ -251,10 +267,10 @@ class T5(pl.LightningModule):
         score_bleu = corpus_bleu(ref_bleu, gen_bleu, weights=(0, 1, 0, 0), smoothing_function=cc.method4)
         return score_bleu
 
-    def get_dataset(self, tokenizer, type_path, num_samples, args):
+    def get_dataset(self, tokenizer, type_path, num_samples, args, length=None):
         if args.mode == 'pretrain' or args.mode == 'finetune':
             dataset = Pretrain(tokenizer=tokenizer, type_path=type_path, num_samples=num_samples,  input_length=args.max_input_length, 
-                            output_length=args.max_output_length, args=args)
+                            output_length=args.max_output_length, args=args, length=length)
             self.ids_to_answers = dataset.ids_to_answers
             return dataset
         else:
@@ -393,14 +409,30 @@ class T5(pl.LightningModule):
     
 
     def training_step(self, batch, batch_idx):
-        loss = self._step(batch)
+        if self.hparams.method=='prune':
+            opt = self.optimizers()
+            opt.zero_grad()
+            loss = self._step(batch)
+            self.manual_backward(loss)
+            self.zero_grads()
+            opt.step()
+        else:
+            loss = self._step(batch)
         self.log("loss", loss)
         return loss
+
+    def zero_grads(self):
+        for name, param in self.model.named_parameters():
+            if name in self.pruning_params:
+                pruned = self.pruning_params[name]
+                device = 'cuda:'+str(param.grad.get_device())
+                pruned = pruned.to(device=device)
+                param.grad = param.grad * pruned
 
     def on_train_epoch_start(self):
         if self.hparams.method=='mixreview':
             train_set = self.train_dataloader().dataset
-            self.epoch+=1
+        self.epoch+=1
 
     def validation_step(self, batch, batch_idx):
         return self._generative_step(batch, batch_idx)
@@ -470,11 +502,13 @@ class T5(pl.LightningModule):
             
             optimizer = Adafactor(optimizer_grouped_parameters, lr=self.hparams.learning_rate, scale_parameter=False, relative_step=False)
 
-        self.optimizer = optimizer
+        #self.optimizer = optimizer
         if self.hparams.use_lr_scheduling:
             len_data = len(self.train_dataloader())
             #denomniator = self.hparams.n_gpu * self.hparams.gradient_accumulation_steps
             denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 3 # Do not decay learning rate to 0 for small set 
+            if self.hparams.dataset_version=='full':
+                denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 2 # Do not decay learning rate to 0 for small set 
             steps_per_epoch = ( len_data // denomniator ) + 1 
             lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
             return [optimizer], [{"scheduler": lr_scheduler, "interval": "step", "name": "learning rate"}]
@@ -488,18 +522,13 @@ class T5(pl.LightningModule):
         n_samples = self.n_obs['train']
         train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
         if self.hparams.method=='mixreview':
-            pretrain_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="pretrain", num_samples=n_samples, args=self.hparams)
-            mixed_dataset = ConcatDataset([train_dataset,pretrain_dataset])
             train_len = len(train_dataset)
             mix_len = int(len(train_dataset) * self.mix_ratio * (self.mix_decay ** self.epoch))
-            pretrain_indices = [a+train_len for a in random.sample(range(0,len(pretrain_dataset)),len(pretrain_dataset))[:mix_len]]
+            pretrain_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="pretrain", num_samples=n_samples, args=self.hparams, length=mix_len)
+            mixed_dataset = ConcatDataset([train_dataset,pretrain_dataset])
             print("mix len is ", mix_len)
-            train_indices = list(range(train_len))
-            indices = train_indices + pretrain_indices
-            # print("final len is ", indices)
-            # sampler = SubsetRandomSampler(indices)
-            subset_dataset = Subset(mixed_dataset, indices)
-            dataloader = DataLoader(subset_dataset, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
+            sampler=RandomSampler(mixed_dataset)
+            dataloader = DataLoader(mixed_dataset, sampler = sampler, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
             print("dataset length is ", len(dataloader.dataset))
         else:
             sampler = RandomSampler(train_dataset)
