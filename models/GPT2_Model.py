@@ -154,10 +154,12 @@ class GPT2(pl.LightningModule):
         score_bleu = corpus_bleu(ref_bleu, gen_bleu, weights=(0, 1, 0, 0), smoothing_function=cc.method4)
         return score_bleu
 
-    def get_dataset(self, tokenizer, type_path, num_samples, args):
-        if args.mode == 'pretrain' or args.mode =='finetune':
-            return Pretrain(tokenizer=tokenizer, type_path=type_path, num_samples=num_samples,  input_length=args.max_input_length, 
-                            output_length=args.max_output_length, args=args)
+    def get_dataset(self, tokenizer, type_path, num_samples, args, length=None):
+        if args.mode == 'pretrain' or args.mode == 'finetune':
+            dataset = Pretrain(tokenizer=tokenizer, type_path=type_path, num_samples=num_samples,  input_length=args.max_input_length, 
+                            output_length=args.max_output_length, args=args, length=length)
+            self.ids_to_answers = dataset.ids_to_answers
+            return dataset
         else:
             raise NameError('Select the correct mode please.')
 
@@ -388,17 +390,14 @@ class GPT2(pl.LightningModule):
         n_samples = self.n_obs['train']
         train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
         if self.hparams.method=='mixreview':
-            pretrain_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="pretrain", num_samples=n_samples, args=self.hparams)
-            mixed_dataset = ConcatDataset([train_dataset,pretrain_dataset])
             train_len = len(train_dataset)
             mix_len = int(len(train_dataset) * self.mix_ratio * (self.mix_decay ** self.epoch))
-            pretrain_indices = [a+train_len for a in random.sample(range(0,len(pretrain_dataset)),len(pretrain_dataset))[:mix_len]]
-            print("Length of dataset to mix is ", mix_len)
-            train_indices = list(range(train_len))
-            indices = train_indices + pretrain_indices
-            subset_dataset = Subset(mixed_dataset, indices)
-            dataloader = DataLoader(subset_dataset, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
-            print("Combined dataset length is ", len(dataloader.dataset))
+            pretrain_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="pretrain", num_samples=n_samples, args=self.hparams, length=mix_len)
+            mixed_dataset = ConcatDataset([train_dataset,pretrain_dataset])
+            print("mix len is ", mix_len)
+            sampler=RandomSampler(mixed_dataset)
+            dataloader = DataLoader(mixed_dataset, sampler = sampler, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
+            print("dataset length is ", len(dataloader.dataset))
         else:
             sampler=RandomSampler(train_dataset)
             dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
