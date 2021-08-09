@@ -2,3 +2,4 @@ wandb
 data
 outputs
 __pycache__
+model_checkpoints
