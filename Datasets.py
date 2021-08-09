@@ -42,7 +42,7 @@ class Pretrain(Dataset):
                 elif self.dataset_version=='small':
                     total_line = 802776
                     skip = sorted(random.sample(range(1,total_line+1),total_line-length))
-                    self.dataset = pd.read_csv('data/wikipedia_pretrain_small.csv', usecols=['input', 'output'], skiprows=skip)
+                    self.dataset = pd.read_csv('data/wikipedia_pretrain_small.csv', usecols=['input', 'output', 'original'], skiprows=skip)
                 elif self.dataset_version=='full':
                     total_line = 8021155
                     skip = sorted(random.sample(range(1,total_line+1),total_line-length))
