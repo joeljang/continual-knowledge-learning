@@ -1,9 +1,9 @@
 {
     "input_length" : 25,
-    "output_length" : 10,
-    "num_train_epochs" : 5,
+    "output_length" : 6,
+    "num_train_epochs" : 30,
     "output_dir" : "",
-    "dataset" : "fever",
+    "dataset" : "zsRE",
     "dataset_version" : "full",
     "train_batch_size" : 128,
     "learning_rate" : 1e-4,
@@ -16,12 +16,12 @@
     "resume_from_checkpoint" : null,
     "accelerator" : "ddp",
     "use_deepspeed" : false,
-    "CUDA_VISIBLE_DEVICES" : "4,5,6,7",
+    "CUDA_VISIBLE_DEVICES" : "0,1,2,3",
     "wandb_log": true,
     "wandb_project": "continual_learning_finetuning_small",
-    "wandb_run_name" : "T5_large_prune_.02_fever_finetuning_baseline",
+    "wandb_run_name" : "T5_large_prune_.05_zsre_finetuning_baseline",
     "mode" : "finetune",
     "use_lr_scheduling" : false,
     "check_validation" : false,
-    "checkpoint_path" : "outputs/prune_.02_last.ckpt"
+    "checkpoint_path" : "outputs/prune_.05_last.ckpt"
 }
