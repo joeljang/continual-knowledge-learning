@@ -232,13 +232,13 @@ if __name__ == '__main__':
                         em_correct_num+=1
                     if subset == 1:
                         subset_correct_num+=1  
-            if args.dataset == 'recentnews':
-                print(f'Number of total validation data: {total_cnt}')
-                print(f'Number of correct lama predictions out of 20725 : {em_correct_num, subset_correct_num}. Percentage : {em_correct_num / 20725, subset_correct_num / 20725}')
-                print(f'Number of correct recentprobe predictions out of {rp_cnt} : {rp_em_correct_num, rp_subset_correct_num}. Percentage : {rp_em_correct_num / rp_cnt, rp_subset_correct_num / rp_cnt}')
-            else:
-                print(f'Number of total validation data: {total_cnt}')
-                print(f'Number of correct predictions: {accuracy_correct_num, em_correct_num, subset_correct_num}. Percentage : {accuracy_correct_num / total_cnt, em_correct_num / total_cnt, subset_correct_num / total_cnt}')
+        if args.dataset == 'recentnews':
+            print(f'Number of total validation data: {total_cnt}')
+            print(f'Number of correct lama predictions out of 20725 : {em_correct_num, subset_correct_num}. Percentage : {em_correct_num / 20725, subset_correct_num / 20725}')
+            print(f'Number of correct recentprobe predictions out of {rp_cnt} : {rp_em_correct_num, rp_subset_correct_num}. Percentage : {rp_em_correct_num / rp_cnt, rp_subset_correct_num / rp_cnt}')
+        else:
+            print(f'Number of total validation data: {total_cnt}')
+            print(f'Number of correct predictions: {accuracy_correct_num, em_correct_num, subset_correct_num}. Percentage : {accuracy_correct_num / total_cnt, em_correct_num / total_cnt, subset_correct_num / total_cnt}')
     else:
         set_seed(40)
         if args.checkpoint_path!="":
