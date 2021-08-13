@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 from models.Kadapter_GPT2 import GPT2LMHeadModel as GPT2_Kadapter
 from models.Lora_GPT2 import GPT2LMHeadModel as GPT2_Lora
 from models.RecAdam import RecAdam, anneal_function
+import torch.nn.utils.prune as prune
 
 from transformers import (
     AdamW,
@@ -33,6 +34,7 @@ class GPT2(pl.LightningModule):
         self.mix_ratio = 4
         self.mix_decay = 0.7
         self.epoch = 0
+        self.pruning_params = {}
 
         if hparams.method=='kadapter':
             self.model = GPT2_Kadapter.from_pretrained(hparams.model_name_or_path)
@@ -68,6 +70,22 @@ class GPT2(pl.LightningModule):
             for name, param in self.model.named_parameters():
                 if 'lora' in name:
                     param.requires_grad = True
+        elif hparams.method=='prune':
+            # Important: This property activates manual optimization.
+            self.automatic_optimization = False
+            trainable_param_cnt=0
+            pruner = prune.L1Unstructured(amount=hparams.prune_ratio)
+            for name, param in self.model.named_parameters():
+                if 'GPT2Attention' in name:
+                    ones = torch.ones(param.data.size())
+                    zeros = torch.zeros(param.data.size())
+                    pruned = pruner.prune(param.data)
+                    pruned = torch.where(pruned!=0, pruned, ones)
+                    pruned = torch.where(pruned==1, pruned, zeros)
+                    trainable_param_cnt+=torch.nonzero(pruned).size(0)
+                    self.pruning_params[name] = pruned
+            print(f'Trainable parameters count: {trainable_param_cnt}')
+            self.log("trainable_param_count", trainable_param_cnt)
 
         # need to be checked 
         self.model.resize_token_embeddings(len(self.tokenizer))
@@ -299,9 +317,25 @@ class GPT2(pl.LightningModule):
     
 
     def training_step(self, batch, batch_idx):
-        loss = self._step(batch)
+        if self.hparams.method=='prune':
+            opt = self.optimizers()
+            opt.zero_grad()
+            loss = self._step(batch)
+            self.manual_backward(loss)
+            self.zero_grads()
+            opt.step()
+        else:
+            loss = self._step(batch)
         self.log("loss", loss)
         return loss
+
+    def zero_grads(self):
+        for name, param in self.model.named_parameters():
+            if name in self.pruning_params:
+                pruned = self.pruning_params[name]
+                device = 'cuda:'+str(param.grad.get_device())
+                pruned = pruned.to(device=device)
+                param.grad = param.grad * pruned
     
     def on_train_epoch_start(self):
         if self.hparams.method=='mixreview':
