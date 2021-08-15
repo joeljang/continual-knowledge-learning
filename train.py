@@ -49,9 +49,11 @@ if __name__ == '__main__':
 
     #Init configs that are not given
     if 'finetuning_ratio' not in hparam:
-        hparam.finetuning_ratio=0.0
+        hparam.finetuning_ratio = 0.0
     if 'prune_ratio' not in hparam:
-        hparam.prune_ratio=0.0
+        hparam.prune_ratio = 0.0
+    if 'split_num' not in hparam:
+        hparam.split_num = 1
 
     #If using pruning method, no grad_norm
     if hparam.method=='prune':
@@ -64,6 +66,7 @@ if __name__ == '__main__':
         output_dir=hparam.output_dir, # Path to save the checkpoints
         dataset=hparam.dataset,
         dataset_version = hparam.dataset_version,
+        split_num = hparam.split_num,
         finetuning_ratio = hparam.finetuning_ratio,
         prune_ratio = hparam.prune_ratio,
         model_name_or_path=hparam.model,
@@ -106,7 +109,10 @@ if __name__ == '__main__':
     if args.dataset_version=='full':
         callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True, every_n_val_epochs=1)]
     else:
-        callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True)]
+        if args.split_num==2:
+            callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True, every_n_val_epochs=args.num_train_epochs // 2)]
+        else:
+            callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True)]
     checkpoint_callback = True
 
     if args.output_dir=="":

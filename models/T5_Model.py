@@ -267,10 +267,10 @@ class T5(pl.LightningModule):
         score_bleu = corpus_bleu(ref_bleu, gen_bleu, weights=(0, 1, 0, 0), smoothing_function=cc.method4)
         return score_bleu
 
-    def get_dataset(self, tokenizer, type_path, num_samples, args, length=None):
+    def get_dataset(self, tokenizer, type_path, num_samples, args, length=None, split=None):
         if args.mode == 'pretrain' or args.mode == 'finetune':
             dataset = Pretrain(tokenizer=tokenizer, type_path=type_path, num_samples=num_samples,  input_length=args.max_input_length, 
-                            output_length=args.max_output_length, args=args, length=length)
+                            output_length=args.max_output_length, args=args, length=length, split=split)
             self.ids_to_answers = dataset.ids_to_answers
             return dataset
         else:
@@ -432,6 +432,9 @@ class T5(pl.LightningModule):
     def on_train_epoch_start(self):
         if self.hparams.method=='mixreview':
             train_set = self.train_dataloader().dataset
+        if self.hparams.split_num==2:
+            self.train_dataloader()
+            self.val_dataloader()
         self.epoch+=1
 
     def validation_step(self, batch, batch_idx):
@@ -519,8 +522,7 @@ class T5(pl.LightningModule):
         n_samples = self.n_obs['train']
         train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
         
-        n_samples = self.n_obs['train']
-        train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
+        
         if self.hparams.method=='mixreview':
             train_len = len(train_dataset)
             mix_len = int(len(train_dataset) * self.mix_ratio * (self.mix_decay ** self.epoch))
@@ -530,15 +532,30 @@ class T5(pl.LightningModule):
             sampler=RandomSampler(mixed_dataset)
             dataloader = DataLoader(mixed_dataset, sampler = sampler, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
             print("dataset length is ", len(dataloader.dataset))
+        elif self.hparams.split_num == 2:
+            n_samples = self.n_obs['train']
+            if not self.epoch > (self.hparams.num_train_epochs - 1) // 2:
+                train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="split", num_samples=n_samples, args=self.hparams, split=1)
+            else:
+                train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="split", num_samples=n_samples, args=self.hparams, split=2)
+            sampler = RandomSampler(train_dataset)
+            dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
         else:
+            n_samples = self.n_obs['train']
+            train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
             sampler = RandomSampler(train_dataset)
             dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
         return dataloader
 
     def val_dataloader(self):
         n_samples = self.n_obs['validation']
-        
-        validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams)
+        if self.hparams.split_num==2:
+            if not self.epoch > (self.hparams.num_train_epochs - 1) // 2:
+                validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams, split=1)
+            else:
+                validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams, split=2)
+        else:
+            validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams,)
         #sampler=RandomSampler(validation_dataset)
         return DataLoader(validation_dataset, batch_size=self.hparams.eval_batch_size, num_workers=self.hparams.num_workers, shuffle=False)
     
