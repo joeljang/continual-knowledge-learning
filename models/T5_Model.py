@@ -47,12 +47,18 @@ class T5(pl.LightningModule):
             self.model = T5_Modular_Small.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='kadapter':
             self.model = T5_Kadapter.from_pretrained(hparams.model_name_or_path)
+        elif hparams.method=='kadapter2':
+            raise Exception('to be implemented')
         elif hparams.method=='lora':
             self.model = T5_Lora.from_pretrained(hparams.model_name_or_path)
+        elif hparams.method=='lora2':
+            aise Exception('to be implemented')
         elif hparams.method=='recadam':
             self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
             self.pretrained_model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
             self.freeze_params(self.pretrained_model) #Freezing pretrained model
+        elif hparams.method=='recadam2':
+            aise Exception('to be implemented')
         else:
             self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.tokenizer = T5Tokenizer.from_pretrained(hparams.tokenizer_name_or_path)
@@ -95,7 +101,6 @@ class T5(pl.LightningModule):
                     self.pruning_params[name] = pruned
             print(f'Trainable parameters count: {trainable_param_cnt}')
             self.log("trainable_param_count", trainable_param_cnt)
-        self.step_count = 0
         self.output_dir = self.hparams.output_dir
             
         n_observations_per_split = {
@@ -267,10 +272,10 @@ class T5(pl.LightningModule):
         score_bleu = corpus_bleu(ref_bleu, gen_bleu, weights=(0, 1, 0, 0), smoothing_function=cc.method4)
         return score_bleu
 
-    def get_dataset(self, tokenizer, type_path, num_samples, args, length=None, split=None):
+    def get_dataset(self, tokenizer, type_path, num_samples, args, length=None):
         if args.mode == 'pretrain' or args.mode == 'finetune':
             dataset = Pretrain(tokenizer=tokenizer, type_path=type_path, num_samples=num_samples,  input_length=args.max_input_length, 
-                            output_length=args.max_output_length, args=args, length=length, split=split)
+                            output_length=args.max_output_length, args=args, length=length)
             self.ids_to_answers = dataset.ids_to_answers
             return dataset
         else:
@@ -430,21 +435,18 @@ class T5(pl.LightningModule):
                 param.grad = param.grad * pruned
 
     def on_train_epoch_start(self):
-        if self.hparams.split_num==2:
-            if self.epoch==0:
-                self.train_dataloader(split=1)
-                self.val_dataloader(split=1)
-            elif self.epoch == (self.hparams.num_train_epochs//2) - 1
-                self.train_dataloader(split=2)
-                self.val_dataloader(split=2)
-        elif self.hparams.method=='mixreview':
+        if self.hparams.method=='mixreview':
             train_set = self.train_dataloader().dataset
         self.epoch+=1
+    
+    def on_train_end(self):
+        if self.hparams.method=='recadam':
+            self.model.save_pretrained(self.hparams.output_dir)
 
     def validation_step(self, batch, batch_idx):
         return self._generative_step(batch, batch_idx)
 
-    def configure_optimizers(self):
+    def configure_optimizers(self, train_len=None):
         "Prepare optimizer and schedule (linear warmup and decay)"
         if self.hparams.method=='recadam':
             no_decay = ["bias", "LayerNorm.weight"]
@@ -516,19 +518,18 @@ class T5(pl.LightningModule):
             denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 3 # Do not decay learning rate to 0 for small set 
             if self.hparams.dataset_version=='full':
                 denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 2 # Do not decay learning rate to 0 for small set 
-            steps_per_epoch = ( len_data // denomniator ) + 1 
+            elif self.hparams.split_num==2:
+                denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps)
+            steps_per_epoch = ( len_data // denomniator ) + 1
             lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
             return [optimizer], [{"scheduler": lr_scheduler, "interval": "step", "name": "learning rate"}]
         else:
             return [optimizer]
 
-    def train_dataloader(self, split=None):       
-        if self.hparams.split_num == 2:
-            n_samples = self.n_obs['train']
-            if split==1:
-                train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="split", num_samples=n_samples, args=self.hparams, split=split)
-            else:
-                train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="split", num_samples=n_samples, args=self.hparams, split=split)
+    def train_dataloader(self):
+        n_samples = self.n_obs['train']
+        if self.hparams.split_num==2:
+            train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="split", num_samples=n_samples, args=self.hparams)
             sampler = RandomSampler(train_dataset)
             dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
         elif self.hparams.method=='mixreview':
@@ -540,25 +541,18 @@ class T5(pl.LightningModule):
             sampler=RandomSampler(mixed_dataset)
             dataloader = DataLoader(mixed_dataset, sampler = sampler, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
             print("dataset length is ", len(dataloader.dataset))
-        else:
-            n_samples = self.n_obs['train']
+        else:     
             train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
             sampler = RandomSampler(train_dataset)
             dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
         return dataloader
 
-    def val_dataloader(self,  split=None):
+    def val_dataloader(self):
         n_samples = self.n_obs['validation']
-        if self.hparams.split_num==2:
-            if split==1
-                validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams, split=split)
-            else:
-                validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams, split=split)
-        else:
-            validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams,)
+        validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams,)
         #sampler=RandomSampler(validation_dataset)
-        return DataLoader(validation_dataset, batch_size=self.hparams.eval_batch_size, num_workers=self.hparams.num_workers, shuffle=False)
-    
+        dataloader = DataLoader(validation_dataset, batch_size=self.hparams.eval_batch_size, num_workers=self.hparams.num_workers, shuffle=False)
+        return dataloader
     
     def test_dataloader(self):
         n_samples = self.n_obs['test']

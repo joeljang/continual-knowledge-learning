@@ -1,7 +1,7 @@
 from models.GPT2_Model import GPT2 as GPT2_Model
 from models.T5_Model import T5 as T5_Model
 
-def load_model(name: str, type: str):
+def load_model(type: str):
     if type=='T5':
         return T5_Model
     elif type=='GPT2':

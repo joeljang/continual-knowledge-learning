@@ -12,7 +12,7 @@ import random
 from datasets import load_dataset
 
 class Pretrain(Dataset):
-    def __init__(self, tokenizer, type_path, num_samples, input_length, output_length, args, length=None, split=None):
+    def __init__(self, tokenizer, type_path, num_samples, input_length, output_length, args, length=None):
         self.args = args
         self.tokenizer = tokenizer
         self.type_path = type_path
@@ -35,14 +35,14 @@ class Pretrain(Dataset):
                 elif self.dataset_version=='full':
                     self.dataset = pd.read_csv('data/recent_news_full.csv')
             elif type_path =='split':
-                if split==1:
+                if self.args.split==1:
                     if self.dataset_version=='debug':
                         self.dataset = pd.read_csv('data/split/recent_news_debug1.csv')
                     elif self.dataset_version=='small':
                         self.dataset = pd.read_csv('data/split/recent_news_small1.csv')
                     else:
                         raise Exception('Not supporting split for full setting.')
-                elif split==2:
+                elif self.args.split==2:
                     if self.dataset_version=='debug':
                         self.dataset = pd.read_csv('data/split/recent_news_debug2.csv')
                     elif self.dataset_version=='small':
@@ -65,7 +65,7 @@ class Pretrain(Dataset):
                     skip = sorted(random.sample(range(1,total_line+1),total_line-length))
                     self.dataset = pd.read_csv('data/wikipedia_pretrain_full.csv', usecols=['input', 'output'], skiprows=skip)
             else:
-                self.dataset = self.get_recent_val(-1,-1, split) #Getting validation data for both LAMA-entity and RecentProbe
+                self.dataset = self.get_recent_val(-1,-1) #Getting validation data for both LAMA-entity and RecentProbe
         elif self.args.dataset == 'lama':
             original = pd.read_csv('data/lama_template.csv')
             if type_path =='train':
@@ -155,10 +155,10 @@ class Pretrain(Dataset):
             self.output_length = output_length
         self.ids_to_answers = ids_to_answers
         
-    def get_recent_val(self, lama_num, recent_num ,split=None):
+    def get_recent_val(self, lama_num, recent_num):
         if self.dataset_version=='debug':
-            if split:
-                if split==1:
+            if self.args.split:
+                if self.args.split==1:
                     recent = pd.read_csv('data/split/recentprobe_debug1.csv')
                 else:
                     recent = pd.read_csv('data/split/recentprobe_debug2.csv')
@@ -166,8 +166,8 @@ class Pretrain(Dataset):
                 recent = pd.read_csv('data/recentprobe_m_debug.csv')
             lama = pd.read_csv('data/lama_template_debug.csv')
         elif self.dataset_version=='small':
-            if split:
-                if split==1:
+            if self.args.split:
+                if self.args.split==1:
                     recent = pd.read_csv('data/split/recentprobe_small1.csv')
                 else:
                     recent = pd.read_csv('data/split/recentprobe_small2.csv')

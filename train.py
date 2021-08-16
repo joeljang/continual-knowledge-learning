@@ -14,6 +14,7 @@ from transformers import (
 )
 from torch.utils.data import DataLoader
 from models import load_model
+import time
 
 from Datasets import Pretrain
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
@@ -110,7 +111,8 @@ if __name__ == '__main__':
         callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True, every_n_val_epochs=1)]
     else:
         if args.split_num==2:
-            callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True, every_n_val_epochs=args.num_train_epochs // 2)]
+            #callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True, every_n_val_epochs=args.num_train_epochs // 2)]
+            callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True)]
         else:
             callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True)]
     checkpoint_callback = True
@@ -131,11 +133,16 @@ if __name__ == '__main__':
         use_fp_16 = False
 
     # Setting Flags for pytorch lightning trainer. Details: https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#trainer-flags
+    if args.split_num==2:
+        #num_train_epochs = args.num_train_epochs // 2
+        num_train_epochs=1
+    else:
+        num_train_epochs = args.num_train_epochs
     train_params = dict(
         accumulate_grad_batches=args.gradient_accumulation_steps,
         plugins=plugins,
         gpus=args.n_gpu,
-        max_epochs=args.num_train_epochs,
+        max_epochs=num_train_epochs,
         precision= 16 if use_fp_16 else 32,
         amp_level=args.opt_level,
         resume_from_checkpoint=args.resume_from_checkpoint,
@@ -154,7 +161,7 @@ if __name__ == '__main__':
         model_type='GPT2'
     else:
         raise Exception('Select the correct model. Supporting "t5" and "gpt2" only.')
-    T5Model = load_model(name=args.method, type=model_type)
+    T5Model = load_model(type=model_type)
     
     if args.check_validation_only:
         model = T5Model(args)
@@ -251,5 +258,27 @@ if __name__ == '__main__':
             model = T5Model.load_from_checkpoint(checkpoint_path=args.checkpoint_path, hparams=args) 
         else:
             model = T5Model(args)
-        trainer = pl.Trainer(**train_params)
-        trainer.fit(model)
+        if args.split_num==2:
+            #Phase 1
+            args.split=1
+            model = T5Model(args)
+            trainer = pl.Trainer(**train_params)
+            trainer.fit(model)
+            #Phase 2
+            args.split=2
+            args.method = args.method+'2'
+            model = T5Model(args)
+            checkpoint_path = args.output_dir + '/last.ckpt'
+            if args.method =='kadapter':
+                raise Exception('Not yet implemented!')
+            elif args.method =='lora':
+                raise Exception('Not yet implemented!')
+            elif args.method =='prune':
+                raise Exception('Not yet implemented!')
+            else:
+                model = T5Model.load_from_checkpoint(checkpoint_path=checkpoint_path, hparams=args) 
+            trainer = pl.Trainer(**train_params)
+            trainer.fit(model)
+        else:
+            trainer = pl.Trainer(**train_params)
+            trainer.fit(model)
