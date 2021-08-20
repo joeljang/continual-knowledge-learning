@@ -1725,8 +1725,7 @@ class AdapterModel(nn.Module):
     def __init__(self, pretrained_config):
         super(AdapterModel, self).__init__()
         self.config = pretrained_config
-        #self.adapter_list = [1,11]
-        self.adapter_list = [1,5]
+        self.adapter_list = [1,11]
         self.adapter_num = len(self.adapter_list)
         self.layer_norm = T5LayerNorm(self.config.d_model, eps=self.config.layer_norm_epsilon)
         self.adapter = nn.ModuleList(
