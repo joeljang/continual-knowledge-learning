@@ -2,7 +2,9 @@ import pytorch_lightning as pl
 from models.Modular_T5 import T5ForConditionalGeneration as T5_Modular
 from models.Modular_Small_T5 import T5ForConditionalGeneration as T5_Modular_Small
 from models.Kadapter_T5 import T5ForConditionalGeneration as T5_Kadapter
+from models.Kadapter_T52 import T5ForConditionalGeneration as T5_Kadapter2
 from models.Lora_T5 import T5ForConditionalGeneration as T5_Lora
+from models.Lora_T52 import T5ForConditionalGeneration as T5_Lora2
 from models.RecAdam import RecAdam, anneal_function
 import torch.nn.utils.prune as prune
 from transformers import (
@@ -48,17 +50,22 @@ class T5(pl.LightningModule):
         elif hparams.method=='kadapter':
             self.model = T5_Kadapter.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='kadapter2':
-            raise Exception('to be implemented')
+            self.model = T5_Kadapter2.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='lora':
             self.model = T5_Lora.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='lora2':
-            aise Exception('to be implemented')
+            self.model = T5_Lora2.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='recadam':
             self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
             self.pretrained_model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
             self.freeze_params(self.pretrained_model) #Freezing pretrained model
         elif hparams.method=='recadam2':
-            aise Exception('to be implemented')
+            #previous_model = (hparams.checkpoint_path).split('/')
+            #previous_model = previous_model[0]+'/'+previous_model[1]
+            #print(f'loading for recadam from directory {previous_model}')
+            self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
+            self.pretrained_model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
+            self.freeze_params(self.pretrained_model) #Freezing pretrained model
         else:
             self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.tokenizer = T5Tokenizer.from_pretrained(hparams.tokenizer_name_or_path)
@@ -84,6 +91,16 @@ class T5(pl.LightningModule):
             # Unfreezing the parameters used for lora
             for name, param in self.model.named_parameters():
                 if 'lora' in name:
+                    param.requires_grad = True
+        elif hparams.method=='kadapter2':
+            # Unfreezing the parameters used for lora
+            for name, param in self.model.named_parameters():
+                if 'kadapter2' in name:
+                    param.requires_grad = True
+        elif hparams.method=='lora2':
+            # Unfreezing the parameters used for lora
+            for name, param in self.model.named_parameters():
+                if 'lora2' in name:
                     param.requires_grad = True
         elif hparams.method=='prune':
             # Important: This property activates manual optimization.
@@ -441,7 +458,8 @@ class T5(pl.LightningModule):
     
     def on_train_end(self):
         if self.hparams.method=='recadam':
-            self.model.save_pretrained(self.hparams.output_dir)
+            self.pretrained_model = self.model
+            #self.model.save_pretrained(self.hparams.output_dir)
 
     def validation_step(self, batch, batch_idx):
         return self._generative_step(batch, batch_idx)
@@ -517,9 +535,7 @@ class T5(pl.LightningModule):
             #denomniator = self.hparams.n_gpu * self.hparams.gradient_accumulation_steps
             denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 3 # Do not decay learning rate to 0 for small set 
             if self.hparams.dataset_version=='full':
-                denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 2 # Do not decay learning rate to 0 for small set 
-            elif self.hparams.split_num==2:
-                denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps)
+                denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 2 # Do not decay learning rate to 0 for full set 
             steps_per_epoch = ( len_data // denomniator ) + 1
             lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
             return [optimizer], [{"scheduler": lr_scheduler, "interval": "step", "name": "learning rate"}]

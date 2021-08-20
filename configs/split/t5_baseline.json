@@ -1,7 +1,7 @@
 {
     "input_length" : 350,
     "output_length" : 350,
-    "num_train_epochs" : 8,
+    "num_train_epochs" : 1,
     "output_dir" : "outputs/T5_large_recentnews(debug)_baseline_split",
     "dataset" : "recentnews",
     "dataset_version" : "debug",
@@ -11,12 +11,12 @@
     "method": "baseline",
     "freeze_level": 0,
     "gradient_accumulation_steps" : 3,
-    "ngpu" : 2,
+    "ngpu" : 1,
     "num_workers" : 40,
     "resume_from_checkpoint" : null,
     "accelerator" : "ddp",
     "use_deepspeed" : false,
-    "CUDA_VISIBLE_DEVICES" : "1,3",
+    "CUDA_VISIBLE_DEVICES" : "2",
     "wandb_log": true,
     "wandb_project": "continual_learning_split",
     "wandb_run_name" : "T5_large_recentnews(debug)_lr.001_baseline",
@@ -24,5 +24,6 @@
     "use_lr_scheduling" : true,
     "check_validation" : false,
     "checkpoint_path" : "",
-    "split_num" : 2
+    "split_num" : 2,
+    "split" : 1
 }

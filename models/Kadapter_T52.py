@@ -1443,6 +1443,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
         encoder_config.is_encoder_decoder = False
         self.encoder = T5Stack(encoder_config, self.shared)
         self.kadapter = AdapterModel(encoder_config)
+        self.kadapter2 = AdapterModel(encoder_config)
 
         decoder_config = copy.deepcopy(config)
         decoder_config.is_decoder = True
@@ -1579,6 +1580,8 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
             )
         if encoder_outputs.hidden_states!=None:
             hidden_states = self.kadapter(encoder_outputs)
+            hidden_states2 = self.kadapter2(encoder_outputs)
+            hidden_states = hidden_states + hidden_states2
         else:
             hidden_states = encoder_outputs[0]
 

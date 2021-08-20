@@ -14,6 +14,7 @@ from datasets import load_dataset
 class Pretrain(Dataset):
     def __init__(self, tokenizer, type_path, num_samples, input_length, output_length, args, length=None):
         self.args = args
+        print(f'split is {self.args.split}')
         self.tokenizer = tokenizer
         self.type_path = type_path
         self.ssm = False
@@ -227,6 +228,9 @@ class Pretrain(Dataset):
                 input_ = example_batch['input']
                 target_ = example_batch['output']
         elif self.args.dataset == 'recentprobe':
+            input_ = example_batch['input']
+            target_ = example_batch['output']
+        elif self.args.dataset == 'recentqa':
             if self.model_type == 'GPT2':
                 if self.type_path == 'train':
                     input_ = example_batch['question'] + ' ' + example_batch['output']
@@ -236,7 +240,7 @@ class Pretrain(Dataset):
                     label_ = example_batch['output']
                     target_ = example_batch['question'] + ' ' + example_batch['output']
             elif self.model_type == 'T5':
-                input_ = example_batch['input']
+                input_ = example_batch['question']
                 target_ = example_batch['output']
         elif (self.args.dataset== 'TriviaQA' or self.args.dataset== 'fever' or self.args.dataset== 'AY2' or self.args.dataset== 'WNED' or self.args.dataset== 'CWEB' 
         or self.args.dataset== 'TREX' or self.args.dataset== 'zsRE' or self.args.dataset== 'NQ' or self.args.dataset== 'HotpotQA' or self.args.dataset== 'ELI5' or self.args.dataset== 'WOW'):

@@ -55,6 +55,8 @@ if __name__ == '__main__':
         hparam.prune_ratio = 0.0
     if 'split_num' not in hparam:
         hparam.split_num = 1
+    if 'split' not in hparam:
+        hparam.split = 0
 
     #If using pruning method, no grad_norm
     if hparam.method=='prune':
@@ -68,6 +70,7 @@ if __name__ == '__main__':
         dataset=hparam.dataset,
         dataset_version = hparam.dataset_version,
         split_num = hparam.split_num,
+        split = hparam.split,
         finetuning_ratio = hparam.finetuning_ratio,
         prune_ratio = hparam.prune_ratio,
         model_name_or_path=hparam.model,
@@ -258,27 +261,5 @@ if __name__ == '__main__':
             model = T5Model.load_from_checkpoint(checkpoint_path=args.checkpoint_path, hparams=args) 
         else:
             model = T5Model(args)
-        if args.split_num==2:
-            #Phase 1
-            args.split=1
-            model = T5Model(args)
-            trainer = pl.Trainer(**train_params)
-            trainer.fit(model)
-            #Phase 2
-            args.split=2
-            args.method = args.method+'2'
-            model = T5Model(args)
-            checkpoint_path = args.output_dir + '/last.ckpt'
-            if args.method =='kadapter':
-                raise Exception('Not yet implemented!')
-            elif args.method =='lora':
-                raise Exception('Not yet implemented!')
-            elif args.method =='prune':
-                raise Exception('Not yet implemented!')
-            else:
-                model = T5Model.load_from_checkpoint(checkpoint_path=checkpoint_path, hparams=args) 
-            trainer = pl.Trainer(**train_params)
-            trainer.fit(model)
-        else:
-            trainer = pl.Trainer(**train_params)
-            trainer.fit(model)
+        trainer = pl.Trainer(**train_params)
+        trainer.fit(model)
