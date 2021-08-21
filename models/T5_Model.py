@@ -32,6 +32,7 @@ import string
 from string import punctuation
 import os
 from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu, sentence_bleu
+import copy
 
 class T5(pl.LightningModule):
     def __init__(self, hparams):
@@ -65,6 +66,9 @@ class T5(pl.LightningModule):
             self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
             self.pretrained_model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
             self.freeze_params(self.pretrained_model) #Freezing pretrained model
+        elif hparams.method=='prune2':
+            previous_model_dir = (hparams.output_dir)[:len(hparams.output_dir)-1]
+            self.model = T5ForConditionalGeneration.from_pretrained(previous_model_dir)
         else:
             self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.tokenizer = T5Tokenizer.from_pretrained(hparams.tokenizer_name_or_path)
@@ -458,7 +462,7 @@ class T5(pl.LightningModule):
     def on_train_end(self):
         if self.hparams.method=='recadam':
             self.pretrained_model = self.model
-        elif self.hparams.method=='kadapter' or self.hparams.method=='lora':
+        elif self.hparams.method=='kadapter' or self.hparams.method=='lora' or self.hparams.method=='prune':
             self.model.save_pretrained(self.hparams.output_dir)
 
     def validation_step(self, batch, batch_idx):
@@ -544,19 +548,29 @@ class T5(pl.LightningModule):
 
     def train_dataloader(self):
         n_samples = self.n_obs['train']
-        if self.hparams.split_num==2:
-            train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="split", num_samples=n_samples, args=self.hparams)
-            sampler = RandomSampler(train_dataset)
-            dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
-        elif self.hparams.method=='mixreview':
+        if self.hparams.method=='mixreview':
+            if self.hparams.split_num==2:
+                train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="split", num_samples=n_samples, args=self.hparams)
+            else:
+                train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
             train_len = len(train_dataset)
             mix_len = int(len(train_dataset) * self.mix_ratio * (self.mix_decay ** self.epoch))
-            pretrain_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="pretrain", num_samples=n_samples, args=self.hparams, length=mix_len)
+            mix_len=3000 #only for debug
+            pretrain_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="pretrain", num_samples=n_samples, args=self.hparams, length=mix_len)  
+            if self.hparams.split==2:
+                args2 = copy.deepcopy(self.hparams)
+                args2.split = 1
+                previous_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="split", num_samples=n_samples, args=args2)  
+                pretrain_dataset = ConcatDataset([previous_dataset,pretrain_dataset])
             mixed_dataset = ConcatDataset([train_dataset,pretrain_dataset])
             print("mix len is ", mix_len)
             sampler=RandomSampler(mixed_dataset)
             dataloader = DataLoader(mixed_dataset, sampler = sampler, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
             print("dataset length is ", len(dataloader.dataset))
+        elif self.hparams.split_num==2:
+            train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="split", num_samples=n_samples, args=self.hparams)
+            sampler = RandomSampler(train_dataset)
+            dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)  
         else:     
             train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
             sampler = RandomSampler(train_dataset)
