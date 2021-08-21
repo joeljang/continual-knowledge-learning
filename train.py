@@ -169,7 +169,7 @@ if __name__ == '__main__':
     if args.check_validation_only:
         model = T5Model(args)
         if args.checkpoint_path!="":
-            model = T5Model.load_from_checkpoint(checkpoint_path=args.checkpoint_path, hparams=args)
+            model = T5Model.load_from_checkpoint(checkpoint_path=args.checkpoint_path, hparams=args, strict=False)
 
         model.eval()
         model.to('cuda')
@@ -239,6 +239,11 @@ if __name__ == '__main__':
                             rp_em_correct_num+=1
                         if subset == 1:
                             rp_subset_correct_num+=1
+                elif args.dataset == 'recentprobe':
+                    if em == 1:
+                        em_correct_num+=1
+                    if subset == 1:
+                        subset_correct_num+=1
                 else:
                     # zero-shot accuracy for WnED and CWEB
                     accuracy = model.accuracy_match_score(predicted, ground_truth)
@@ -252,13 +257,16 @@ if __name__ == '__main__':
             print(f'Number of total validation data: {total_cnt}')
             print(f'Number of correct lama predictions out of 20725 : {em_correct_num, subset_correct_num}. Percentage : {em_correct_num / 20725, subset_correct_num / 20725}')
             print(f'Number of correct recentprobe predictions out of {rp_cnt} : {rp_em_correct_num, rp_subset_correct_num}. Percentage : {rp_em_correct_num / rp_cnt, rp_subset_correct_num / rp_cnt}')
+        elif args.dataset == 'recentprobe':
+            print(f'Number of total validation data: {total_cnt}')
+            print(f'Number of correct predictions: {em_correct_num, subset_correct_num}. Percentage : {(em_correct_num / total_cnt)*100, (subset_correct_num / total_cnt)*100}')
         else:
             print(f'Number of total validation data: {total_cnt}')
             print(f'Number of correct predictions: {accuracy_correct_num, em_correct_num, subset_correct_num}. Percentage : {accuracy_correct_num / total_cnt, em_correct_num / total_cnt, subset_correct_num / total_cnt}')
     else:
         set_seed(40)
         if args.checkpoint_path!="":
-            model = T5Model.load_from_checkpoint(checkpoint_path=args.checkpoint_path, hparams=args) 
+            model = T5Model.load_from_checkpoint(checkpoint_path=args.checkpoint_path, hparams=args, strict=False) 
         else:
             model = T5Model(args)
         trainer = pl.Trainer(**train_params)
