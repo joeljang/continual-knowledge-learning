@@ -136,16 +136,11 @@ if __name__ == '__main__':
         use_fp_16 = False
 
     # Setting Flags for pytorch lightning trainer. Details: https://pytorch-lightning.readthedocs.io/en/stable/common/trainer.html#trainer-flags
-    if args.split_num==2:
-        #num_train_epochs = args.num_train_epochs // 2
-        num_train_epochs=1
-    else:
-        num_train_epochs = args.num_train_epochs
     train_params = dict(
         accumulate_grad_batches=args.gradient_accumulation_steps,
         plugins=plugins,
         gpus=args.n_gpu,
-        max_epochs=num_train_epochs,
+        max_epochs=args.num_train_epochs,
         precision= 16 if use_fp_16 else 32,
         amp_level=args.opt_level,
         resume_from_checkpoint=args.resume_from_checkpoint,

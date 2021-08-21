@@ -50,19 +50,18 @@ class T5(pl.LightningModule):
         elif hparams.method=='kadapter':
             self.model = T5_Kadapter.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='kadapter2':
-            self.model = T5_Kadapter2.from_pretrained(hparams.model_name_or_path)
+            previous_model_dir = (hparams.output_dir)[:len(hparams.output_dir)-1]
+            self.model = T5_Kadapter2.from_pretrained(previous_model_dir)
         elif hparams.method=='lora':
             self.model = T5_Lora.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='lora2':
-            self.model = T5_Lora2.from_pretrained(hparams.model_name_or_path)
+            previous_model_dir = (hparams.output_dir)[:len(hparams.output_dir)-1]
+            self.model = T5_Lora2.from_pretrained(previous_model_dir)
         elif hparams.method=='recadam':
             self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
             self.pretrained_model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
             self.freeze_params(self.pretrained_model) #Freezing pretrained model
         elif hparams.method=='recadam2':
-            #previous_model = (hparams.checkpoint_path).split('/')
-            #previous_model = previous_model[0]+'/'+previous_model[1]
-            #print(f'loading for recadam from directory {previous_model}')
             self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
             self.pretrained_model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
             self.freeze_params(self.pretrained_model) #Freezing pretrained model
@@ -459,7 +458,8 @@ class T5(pl.LightningModule):
     def on_train_end(self):
         if self.hparams.method=='recadam':
             self.pretrained_model = self.model
-            #self.model.save_pretrained(self.hparams.output_dir)
+        elif self.hparams.method=='kadapter' or self.hparams.method=='lora':
+            self.model.save_pretrained(self.hparams.output_dir)
 
     def validation_step(self, batch, batch_idx):
         return self._generative_step(batch, batch_idx)
