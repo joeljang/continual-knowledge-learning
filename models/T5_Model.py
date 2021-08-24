@@ -435,12 +435,15 @@ class T5(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         if self.hparams.method=='prune' or self.hparams.method=='prune2':
+            sch = self.lr_schedulers()
             opt = self.optimizers()
-            opt.zero_grad()
             loss = self._step(batch)
             self.manual_backward(loss)
             self.zero_grads()
-            opt.step()
+            if (batch_idx + 1) % self.hparams.gradient_accumulation_steps == 0:
+                opt.step()
+                sch.step()
+                opt.zero_grad()
         else:
             loss = self._step(batch)
         self.log("loss", loss)
