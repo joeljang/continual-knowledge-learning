@@ -105,7 +105,7 @@ class T5(pl.LightningModule):
             for name, param in self.model.named_parameters():
                 if 'lora2' in name:
                     param.requires_grad = True
-        elif hparams.method=='prune':
+        elif hparams.method=='prune' or hparams.method=='prune2':
             # Important: This property activates manual optimization.
             self.automatic_optimization = False
             trainable_param_cnt=0
@@ -434,7 +434,7 @@ class T5(pl.LightningModule):
     
 
     def training_step(self, batch, batch_idx):
-        if self.hparams.method=='prune':
+        if self.hparams.method=='prune' or self.hparams.method=='prune2':
             opt = self.optimizers()
             opt.zero_grad()
             loss = self._step(batch)

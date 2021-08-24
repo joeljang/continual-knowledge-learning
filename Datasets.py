@@ -76,7 +76,7 @@ class Pretrain(Dataset):
         elif self.args.dataset == 'recentprobe' or self.args.dataset == 'recentqa':
             if self.dataset_version == 'small':
                 rp_dir = 'data/recentprobe_paq_small.csv'
-            elif self.dataset_version == 'full'
+            elif self.dataset_version == 'full':
                 rp_dir = 'data/recentprobe_paq_full.csv'
             original = pd.read_csv(rp_dir)
             if type_path =='train':
