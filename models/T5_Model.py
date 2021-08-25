@@ -7,6 +7,7 @@ from models.Lora_T5 import T5ForConditionalGeneration as T5_Lora
 from models.Lora_T52 import T5ForConditionalGeneration as T5_Lora2
 from models.RecAdam import RecAdam, anneal_function
 import torch.nn.utils.prune as prune
+import torch.nn.functional as F
 from transformers import (
     AdamW,
     Adafactor,
@@ -121,6 +122,40 @@ class T5(pl.LightningModule):
                     self.pruning_params[name] = pruned
             print(f'Trainable parameters count: {trainable_param_cnt}')
             self.log("trainable_param_count", trainable_param_cnt)
+        elif hparams.method=='prune_new':
+            self.automatic_optimization = False
+            trainable_param_cnt=0
+            pruner = prune.L1Unstructured(amount=1-hparams.prune_ratio)
+            for name, param in self.model.named_parameters():
+                if 'SelfAttention' in name and not ('decoder' in name):
+                    zeros = torch.zeros(param.data.size())
+                    rec = torch.abs(1 / param.data)   
+                    out = F.normalize(rec)
+                    pruned = pruner.prune(out)
+                    '''
+                    cnt_0=0
+                    cnt_1=0
+                    cnt_01=0
+                    cnt_001=0
+                    cnt_0001=0
+                    for o in pruned:
+                        for v in o:
+                            if v == 0:
+                                cnt_0+=1
+                            elif v > 1e-1:
+                                print(v)
+                                cnt_1+=1
+                            elif v > 1e-2:
+                                print(v)
+                                cnt_01+=1
+                            elif v > 1e-3:
+                                cnt_001+=1
+                            else:
+                                cnt_0001+=1
+                    print(cnt_0, cnt_1, cnt_01, cnt_001, cnt_0001)
+                    exit()
+                    '''
+                    self.pruning_params[name] = pruned
         self.output_dir = self.hparams.output_dir
             
         n_observations_per_split = {
@@ -434,7 +469,7 @@ class T5(pl.LightningModule):
     
 
     def training_step(self, batch, batch_idx):
-        if self.hparams.method=='prune' or self.hparams.method=='prune2':
+        if self.hparams.method=='prune' or self.hparams.method=='prune2' or self.hparams.method=='prune_new':
             sch = self.lr_schedulers()
             opt = self.optimizers()
             loss = self._step(batch)
