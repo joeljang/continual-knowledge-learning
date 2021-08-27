@@ -125,10 +125,32 @@ class T5(pl.LightningModule):
             self.log("trainable_param_count", trainable_param_cnt)
         elif hparams.method=='prune_new':
             self.automatic_optimization = False
-            trainable_param_cnt=0
             pruner = prune.L1Unstructured(amount=1-hparams.prune_ratio)
             for name, param in self.model.named_parameters():
                 if 'SelfAttention' in name and not ('decoder' in name):
+                    zeros = torch.zeros(param.data.size())
+                    rec = torch.abs(1 / param.data)   
+                    out = F.normalize(rec)
+                    pruned = pruner.prune(out)
+                    self.pruning_params[name] = pruned
+        elif 'prune_lw' in hparams.method:
+            self.automatic_optimization = False
+            configs = T5Config(model_type=hparams.model_name_or_path)
+            if "small" in hparams.model_name_or_path:
+                num_enc_layers = 8
+            else:
+                num_enc_layers = 24
+            for name, param in self.model.named_parameters():
+                if 'SelfAttention' in name and not ('decoder' in name):
+                    name_s = name.split('.')
+                    layer_num = int(name_s[2]) + 1
+                    if 'dec' in hparams.method:
+                        importance = layer_num/num_enc_layers
+                        p_ratio = 1 - ((hparams.prune_ratio * 2 ) * importance)
+                    else:
+                        importance = ( num_enc_layers - (layer_num - 1) ) / num_enc_layers
+                        p_ratio = 1 - ((hparams.prune_ratio * 2) * importance)
+                    pruner = prune.L1Unstructured(amount=p_ratio)
                     zeros = torch.zeros(param.data.size())
                     rec = torch.abs(1 / param.data)   
                     out = F.normalize(rec)
@@ -463,7 +485,7 @@ class T5(pl.LightningModule):
     
 
     def training_step(self, batch, batch_idx):
-        if self.hparams.method=='prune' or self.hparams.method=='prune2' or self.hparams.method=='prune_new' or self.hparams.method=='layerwiselr_dec' or self.hparams.method=='layerwiselr_inc':
+        if 'prune' in self.hparams.method or 'layerwiselr' in self.hparams.method:
             sch = self.lr_schedulers()
             opt = self.optimizers()
             loss = self._step(batch)
@@ -482,7 +504,7 @@ class T5(pl.LightningModule):
         for name, param in self.model.named_parameters():
             if name in self.pruning_params:
                 pruned = self.pruning_params[name]        
-                if not (self.hparams.method=='layerwiselr_dec' or self.hparams.method=='layerwiselr_inc'):
+                if not ('layerwiselr' in self.hparams.method):
                     device = 'cuda:'+str(param.grad.get_device())
                     pruned = pruned.to(device=device)
                 param.grad = param.grad * pruned
