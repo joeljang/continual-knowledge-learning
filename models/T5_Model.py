@@ -149,7 +149,6 @@ class T5(pl.LightningModule):
                         importance = layer_num/num_enc_layers
                     else:
                         importance = ( num_enc_layers - (layer_num - 1) ) / num_enc_layers
-                    print(importance)
                     self.pruning_params[name] = importance
         self.output_dir = self.hparams.output_dir
             
@@ -483,7 +482,7 @@ class T5(pl.LightningModule):
         for name, param in self.model.named_parameters():
             if name in self.pruning_params:
                 pruned = self.pruning_params[name]        
-                if not self.hparams.method=='layerwiselr_dec' or self.hparams.method=='layerwiselr_inc':
+                if not (self.hparams.method=='layerwiselr_dec' or self.hparams.method=='layerwiselr_inc'):
                     device = 'cuda:'+str(param.grad.get_device())
                     pruned = pruned.to(device=device)
                 param.grad = param.grad * pruned
