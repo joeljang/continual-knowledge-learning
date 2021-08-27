@@ -59,7 +59,7 @@ if __name__ == '__main__':
         hparam.split = 0
 
     #If using pruning method, no grad_norm
-    if hparam.method=='prune' or hparam.method=='prune2'or hparam.method=='prune_new':
+    if hparam.method=='prune' or hparam.method=='prune2'or hparam.method=='prune_new' or hparam.method=='layerwiselr_dec':
         grad_norm = None
     else:
         grad_norm = 0.5

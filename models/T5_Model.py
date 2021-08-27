@@ -6,6 +6,7 @@ from models.Kadapter_T52 import T5ForConditionalGeneration as T5_Kadapter2
 from models.Lora_T5 import T5ForConditionalGeneration as T5_Lora
 from models.Lora_T52 import T5ForConditionalGeneration as T5_Lora2
 from models.RecAdam import RecAdam, anneal_function
+from transformers import T5Config
 import torch.nn.utils.prune as prune
 import torch.nn.functional as F
 from transformers import (
@@ -132,30 +133,20 @@ class T5(pl.LightningModule):
                     rec = torch.abs(1 / param.data)   
                     out = F.normalize(rec)
                     pruned = pruner.prune(out)
-                    '''
-                    cnt_0=0
-                    cnt_1=0
-                    cnt_01=0
-                    cnt_001=0
-                    cnt_0001=0
-                    for o in pruned:
-                        for v in o:
-                            if v == 0:
-                                cnt_0+=1
-                            elif v > 1e-1:
-                                print(v)
-                                cnt_1+=1
-                            elif v > 1e-2:
-                                print(v)
-                                cnt_01+=1
-                            elif v > 1e-3:
-                                cnt_001+=1
-                            else:
-                                cnt_0001+=1
-                    print(cnt_0, cnt_1, cnt_01, cnt_001, cnt_0001)
-                    exit()
-                    '''
                     self.pruning_params[name] = pruned
+        elif hparams.method=='layerwiselr_dec':
+            self.automatic_optimization = False 
+            configs = T5Config(model_type=hparams.model_name_or_path)
+            if "small" in hparams.model_name_or_path:
+                num_enc_layers = 8
+            else:
+                num_enc_layers = 24
+            for name, param in self.model.named_parameters():
+                if 'SelfAttention' in name and not ('decoder' in name):
+                    name_s = name.split('.')
+                    layer_num = int(name_s[2]) + 1
+                    importance = layer_num/num_enc_layers
+                    self.pruning_params[name] = importance
         self.output_dir = self.hparams.output_dir
             
         n_observations_per_split = {
@@ -166,7 +157,7 @@ class T5(pl.LightningModule):
         self.n_obs = {k: v if v >= 0 else None for k, v in n_observations_per_split.items()}
         self.em_score_list = []
         self.subset_score_list =[]
-        
+
     def normalize_answer(self, s):
         """Lower text and remove punctuation, articles and extra whitespace."""
 
@@ -469,7 +460,7 @@ class T5(pl.LightningModule):
     
 
     def training_step(self, batch, batch_idx):
-        if self.hparams.method=='prune' or self.hparams.method=='prune2' or self.hparams.method=='prune_new':
+        if self.hparams.method=='prune' or self.hparams.method=='prune2' or self.hparams.method=='prune_new' or self.hparams.method=='layerwiselr_dec':
             sch = self.lr_schedulers()
             opt = self.optimizers()
             loss = self._step(batch)
@@ -487,9 +478,10 @@ class T5(pl.LightningModule):
     def zero_grads(self):
         for name, param in self.model.named_parameters():
             if name in self.pruning_params:
-                pruned = self.pruning_params[name]
-                device = 'cuda:'+str(param.grad.get_device())
-                pruned = pruned.to(device=device)
+                pruned = self.pruning_params[name]        
+                if not self.hparams.method=='layerwiselr_dec':
+                    device = 'cuda:'+str(param.grad.get_device())
+                    pruned = pruned.to(device=device)
                 param.grad = param.grad * pruned
 
     def on_train_epoch_start(self):
