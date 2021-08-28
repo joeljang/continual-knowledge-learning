@@ -147,7 +147,13 @@ class T5(pl.LightningModule):
                     if 'dec' in hparams.method:
                         importance = layer_num/num_enc_layers
                         p_ratio = 1 - ((hparams.prune_ratio * 2 ) * importance)
-                    else:
+                    elif 'inc' in hparams.method:
+                        importance = ( num_enc_layers - (layer_num - 1) ) / num_enc_layers
+                        p_ratio = 1 - ((hparams.prune_ratio * 2) * importance)
+                    elif 'thin' in hparams.method:
+                        importance = ( num_enc_layers - (layer_num - 1) ) / num_enc_layers
+                        p_ratio = 1 - ((hparams.prune_ratio * 2) * importance)
+                    elif 'fat' in hparams.method:
                         importance = ( num_enc_layers - (layer_num - 1) ) / num_enc_layers
                         p_ratio = 1 - ((hparams.prune_ratio * 2) * importance)
                     pruner = prune.L1Unstructured(amount=p_ratio)
@@ -494,6 +500,8 @@ class T5(pl.LightningModule):
             if (batch_idx + 1) % self.hparams.gradient_accumulation_steps == 0:
                 if self.hparams.method=='prune_iter':
                     self.iter_prune()
+                elif self.hparams.method=='prune_iter_new':
+                    self.iter_prune_new()
                 else:
                     self.zero_grads()
                 opt.step()
@@ -518,7 +526,7 @@ class T5(pl.LightningModule):
                 param.grad = param.grad * pruned
 
     def iter_prune_new(self):
-        pruner = prune.L1Unstructured(amount=self.hparams.prune_ratio)
+        pruner = prune.L1Unstructured(amount=1-self.hparams.prune_ratio)
         for name, param in self.model.named_parameters():
             if 'SelfAttention' in name and not ('decoder' in name):
                 device = 'cuda:'+str(param.grad.get_device())
