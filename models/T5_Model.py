@@ -151,17 +151,27 @@ class T5(pl.LightningModule):
                         importance = ( num_enc_layers - (layer_num - 1) ) / num_enc_layers
                         p_ratio = 1 - ((hparams.prune_ratio * 2) * importance)
                     elif 'thin' in hparams.method:
-                        importance = ( num_enc_layers - (layer_num - 1) ) / num_enc_layers
+                        num_layers = num_enc_layers / 2
+                        if layer_num <= num_layers:
+                            importance = ( num_layers - (layer_num - 1) ) / num_layers
+                        else:
+                            layer_n = layer_num - num_layers
+                            importance = layer_n/num_layers
                         p_ratio = 1 - ((hparams.prune_ratio * 2) * importance)
                     elif 'fat' in hparams.method:
-                        importance = ( num_enc_layers - (layer_num - 1) ) / num_enc_layers
+                        num_layers = num_enc_layers / 2
+                        if layer_num <= num_layers:
+                            importance = layer_num/num_layers
+                        else:
+                            layer_n = layer_num - num_layers
+                            importance = ( num_layers - (layer_n - 1) ) / num_layers
                         p_ratio = 1 - ((hparams.prune_ratio * 2) * importance)
                     pruner = prune.L1Unstructured(amount=p_ratio)
                     zeros = torch.zeros(param.data.size())
                     rec = torch.abs(1 / param.data)   
                     out = F.normalize(rec)
                     pruned = pruner.prune(out)
-                    self.pruning_params[name] = pruned
+                    self.pruning_params[name] = pruned          
         elif 'layerwiselr' in hparams.method:
             self.automatic_optimization = False 
             configs = T5Config(model_type=hparams.model_name_or_path)
