@@ -172,7 +172,7 @@ class T5(pl.LightningModule):
                     else:
                         importance = ( num_enc_layers - (layer_num - 1) ) / num_enc_layers
                     self.pruning_params[name] = importance
-        elif hparams.method=='prune_iter':
+        elif 'prune_iter' in hparams.method:
             self.automatic_optimization = False
         self.output_dir = self.hparams.output_dir
             
@@ -515,6 +515,17 @@ class T5(pl.LightningModule):
                 pruned = torch.where(pruned!=0, pruned, ones)
                 pruned = torch.where(pruned==1, pruned, zeros)
                 #pruned = pruned.to(device=device)
+                param.grad = param.grad * pruned
+
+    def iter_prune_new(self):
+        pruner = prune.L1Unstructured(amount=self.hparams.prune_ratio)
+        for name, param in self.model.named_parameters():
+            if 'SelfAttention' in name and not ('decoder' in name):
+                device = 'cuda:'+str(param.grad.get_device())
+                zeros = torch.zeros(param.data.size()).to(device=device)
+                rec = torch.abs(1 / param.data)   
+                out = F.normalize(rec)
+                pruned = pruner.prune(out)
                 param.grad = param.grad * pruned
 
     def zero_grads(self):
