@@ -172,6 +172,8 @@ class T5(pl.LightningModule):
                     else:
                         importance = ( num_enc_layers - (layer_num - 1) ) / num_enc_layers
                     self.pruning_params[name] = importance
+        elif hparams.method=='prune_iter':
+            self.automatic_optimization = False
         self.output_dir = self.hparams.output_dir
             
         n_observations_per_split = {
@@ -482,7 +484,6 @@ class T5(pl.LightningModule):
             self.log('em_score', em_score, prog_bar=True, logger=True)
             self.log('subset_match_score', subset_match_score, prog_bar=True, logger=True)
         #self.log('bleu_score', bleu_score, prog_bar=True, logger=True)
-    
 
     def training_step(self, batch, batch_idx):
         if 'prune' in self.hparams.method or 'layerwiselr' in self.hparams.method:
@@ -490,8 +491,11 @@ class T5(pl.LightningModule):
             opt = self.optimizers()
             loss = self._step(batch)
             self.manual_backward(loss)
-            self.zero_grads()
             if (batch_idx + 1) % self.hparams.gradient_accumulation_steps == 0:
+                if self.hparams.method=='prune_iter':
+                    self.iter_prune()
+                else:
+                    self.zero_grads()
                 opt.step()
                 sch.step()
                 opt.zero_grad()
@@ -499,6 +503,19 @@ class T5(pl.LightningModule):
             loss = self._step(batch)
         self.log("loss", loss)
         return loss
+
+    def iter_prune(self):
+        pruner = prune.L1Unstructured(amount=self.hparams.prune_ratio)
+        for name, param in self.model.named_parameters():
+            if 'SelfAttention' in name and not ('decoder' in name):
+                device = 'cuda:'+str(param.grad.get_device())
+                ones = torch.ones(param.data.size()).to(device=device)
+                zeros = torch.zeros(param.data.size()).to(device=device)
+                pruned = pruner.prune(param.data)
+                pruned = torch.where(pruned!=0, pruned, ones)
+                pruned = torch.where(pruned==1, pruned, zeros)
+                #pruned = pruned.to(device=device)
+                param.grad = param.grad * pruned
 
     def zero_grads(self):
         for name, param in self.model.named_parameters():
