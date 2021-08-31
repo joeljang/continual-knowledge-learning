@@ -560,12 +560,12 @@ class T5(pl.LightningModule):
             pruner = prune.L1Unstructured(amount=self.hparams.prune_ratio)
             for name, param in self.model.named_parameters():
                 if not ('layer_norm' in name) and not ('decoder' in name):
-                    ones = torch.ones(param.data.size())
-                    zeros = torch.zeros(param.data.size())
+                    device = 'cuda:'+str(param.grad.get_device())
+                    ones = torch.ones(param.data.size()).to(device=device)
+                    zeros = torch.zeros(param.data.size()).to(device=device)
                     pruned = pruner.prune(param.data)
                     pruned = torch.where(pruned!=0, pruned, ones)
                     pruned = torch.where(pruned==1, pruned, zeros)
-                    trainable_param_cnt+=torch.nonzero(pruned).size(0)
                     self.pruning_params[name] = pruned
         self.epoch+=1
     
