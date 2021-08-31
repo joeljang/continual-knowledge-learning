@@ -557,12 +557,15 @@ class T5(pl.LightningModule):
         if self.hparams.method=='mixreview':
             train_set = self.train_dataloader().dataset
         if self.hparams.method=='prune_iter_e':
-            pruner = prune.L1Unstructured(amount=1-self.hparams.prune_ratio)
+            pruner = prune.L1Unstructured(amount=self.hparams.prune_ratio)
             for name, param in self.model.named_parameters():
-                if 'SelfAttention' in name and not ('decoder' in name):
-                    rec = torch.abs(1 / param.data)   
-                    out = F.normalize(rec)
-                    pruned = pruner.prune(out)
+                if not ('layer_norm' in name) and not ('decoder' in name):
+                    ones = torch.ones(param.data.size())
+                    zeros = torch.zeros(param.data.size())
+                    pruned = pruner.prune(param.data)
+                    pruned = torch.where(pruned!=0, pruned, ones)
+                    pruned = torch.where(pruned==1, pruned, zeros)
+                    trainable_param_cnt+=torch.nonzero(pruned).size(0)
                     self.pruning_params[name] = pruned
         self.epoch+=1
     
