@@ -539,8 +539,6 @@ class T5(pl.LightningModule):
         pruner = prune.L1Unstructured(amount=1-self.hparams.prune_ratio)
         for name, param in self.model.named_parameters():
             if 'SelfAttention' in name and not ('decoder' in name):
-                device = 'cuda:'+str(param.grad.get_device())
-                zeros = torch.zeros(param.data.size()).to(device=device)
                 rec = torch.abs(1 / param.data)   
                 out = F.normalize(rec)
                 pruned = pruner.prune(out)

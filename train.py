@@ -63,6 +63,10 @@ if __name__ == '__main__':
         grad_norm = None
     else:
         grad_norm = 0.5
+
+    #If using pruning method, no grad_norm
+    if 'weight_decay' not in hparam:
+        hparam.weight_decay = 0.0
         
     #Setting configurations
     args_dict = dict(
@@ -83,7 +87,7 @@ if __name__ == '__main__':
         freeze_encoder=False,
         freeze_embeds=False,
         learning_rate=hparam.learning_rate,
-        weight_decay=0.0,
+        weight_decay=hparam.weight_decay,
         adam_epsilon=1e-8,
         warmup_steps=0,
         train_batch_size=hparam.train_batch_size,
