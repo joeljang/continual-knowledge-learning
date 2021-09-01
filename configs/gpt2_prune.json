@@ -8,7 +8,7 @@
     "train_batch_size" : 5,
     "learning_rate" : 1e-3,
     "model" : "gpt2-large",
-    "method": "prune",
+    "method": "prune_iter_e",
     "freeze_level": 0,
     "gradient_accumulation_steps" : 3,
     "ngpu" : 4,

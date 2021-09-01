@@ -86,6 +86,9 @@ class GPT2(pl.LightningModule):
                     self.pruning_params[name] = pruned
             print(f'Trainable parameters count: {trainable_param_cnt}')
             self.log("trainable_param_count", trainable_param_cnt)
+        elif hparams.method=='prune_iter_e':
+            # Important: This property activates manual optimization.
+            self.automatic_optimization = False
 
         # need to be checked 
         self.model.resize_token_embeddings(len(self.tokenizer))
@@ -315,15 +318,17 @@ class GPT2(pl.LightningModule):
             self.log('subset_match_score', subset_match_score, prog_bar=True, logger=True)
         #self.log('bleu_score', bleu_score, prog_bar=True, logger=True)
     
-
     def training_step(self, batch, batch_idx):
-        if self.hparams.method=='prune':
+        if 'prune' in self.hparams.method:
+            sch = self.lr_schedulers()
             opt = self.optimizers()
-            opt.zero_grad()
             loss = self._step(batch)
             self.manual_backward(loss)
-            self.zero_grads()
-            opt.step()
+            if (batch_idx + 1) % self.hparams.gradient_accumulation_steps == 0:
+                self.zero_grads()
+                opt.step()
+                sch.step()
+                opt.zero_grad()
         else:
             loss = self._step(batch)
         self.log("loss", loss)
@@ -340,6 +345,17 @@ class GPT2(pl.LightningModule):
     def on_train_epoch_start(self):
         if self.hparams.method=='mixreview':
             train_set = self.train_dataloader().dataset
+        if self.hparams.method=='prune_iter_e':
+            pruner = prune.L1Unstructured(amount=self.hparams.prune_ratio)
+            for name, param in self.model.named_parameters():
+                if not ('layer_norm' in name) and not ('decoder' in name):
+                    device = 'cuda:'+str(param.get_device())
+                    ones = torch.ones(param.data.size()).to(device=device)
+                    zeros = torch.zeros(param.data.size()).to(device=device)
+                    pruned = pruner.prune(param.data)
+                    pruned = torch.where(pruned!=0, pruned, ones)
+                    pruned = torch.where(pruned==1, pruned, zeros)
+                    self.pruning_params[name] = pruned
         self.epoch+=1
 
     def validation_step(self, batch, batch_idx):
