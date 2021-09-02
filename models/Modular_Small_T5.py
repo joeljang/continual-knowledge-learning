@@ -1589,7 +1589,8 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
                 inputs_embeds=inputs_embeds,
                 head_mask=head_mask,
                 output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
+                #output_hidden_states=output_hidden_states,
+                output_hidden_states=True,
                 return_dict=return_dict,
             )
             hidden_states = encoder_outputs[0] + (scale_factor * self.encoder_modular_projection(encoder_modular_outputs[0]))
