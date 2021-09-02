@@ -63,12 +63,12 @@ class GPT2(pl.LightningModule):
         if hparams.method=='kadapter':
             # Unfreezing the parameters used for kadapter
             for name, param in self.model.named_parameters():
-                if 'kadapter' in name:
+                if 'kadapter' in name or 'lm_head' in name:
                     param.requires_grad = True
         elif hparams.method=='lora':
             # Unfreezing the parameters used for lora
             for name, param in self.model.named_parameters():
-                if 'lora' in name:
+                if 'lora' in name or 'lm_head' in name:
                     param.requires_grad = True
         elif hparams.method=='prune':
             # Important: This property activates manual optimization.
