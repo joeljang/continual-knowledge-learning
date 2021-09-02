@@ -1582,7 +1582,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
                 attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
             )
         if encoder_outputs.hidden_states!=None:
-            scale_factor = 0.1
+            scale_factor = 0.05
             encoder_modular_outputs = self.encoder_modular(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
