@@ -1441,7 +1441,12 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
         encoder_config.is_decoder = False
         encoder_config.use_cache = False
         encoder_config.is_encoder_decoder = False
+        encoder_modular_config = T5Config.from_pretrained('google/t5-small-ssm')
+        encoder_modular_config.use_cache = False
+        encoder_modular_config.is_encoder_decoder = False
         self.encoder = T5Stack(encoder_config, self.shared)
+        self.encoder_modular = T5Stack(encoder_modular_config, self.shared)
+        self.encoder_modular_projection = nn.Linear(512, 1024)
 
         decoder_config = copy.deepcopy(config)
         decoder_config.is_decoder = True
@@ -1489,6 +1494,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
     def set_input_embeddings(self, new_embeddings):
         self.shared = new_embeddings
         self.encoder.set_input_embeddings(new_embeddings)
+        self.encoder_modular.set_input_embeddings(new_embeddings)
         self.decoder.set_input_embeddings(new_embeddings)
 
     def set_output_embeddings(self, new_embeddings):
@@ -1575,8 +1581,20 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
                 hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
                 attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
             )
-
-        hidden_states = encoder_outputs[0]
+        if encoder_outputs.hidden_states!=None:
+            scale_factor = 0.1
+            encoder_modular_outputs = self.encoder_modular(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                inputs_embeds=inputs_embeds,
+                head_mask=head_mask,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+            hidden_states = encoder_outputs[0] + (scale_factor * self.encoder_modular_projection(encoder_modular_outputs[0]))
+        else:
+            hidden_states = encoder_outputs[0]
 
         if self.model_parallel:
             torch.cuda.set_device(self.decoder.first_device)
