@@ -1436,16 +1436,18 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
         self.model_dim = config.d_model
 
         self.shared = nn.Embedding(config.vocab_size, config.d_model)
-
         encoder_config = copy.deepcopy(config)
         encoder_config.is_decoder = False
         encoder_config.use_cache = False
         encoder_config.is_encoder_decoder = False
         encoder_modular_config = T5Config.from_pretrained('google/t5-small-ssm')
+
+        self.shared2 = nn.Embedding(encoder_modular_config.vocab_size, encoder_modular_config.d_model)
         encoder_modular_config.use_cache = False
         encoder_modular_config.is_encoder_decoder = False
         self.encoder = T5Stack(encoder_config, self.shared)
-        self.encoder_modular = T5Stack(encoder_modular_config, self.shared)
+        self.encoder_modular = T5Stack(encoder_modular_config, self.shared2)
+        self.encoder_modular2 = T5Stack(encoder_modular_config, self.shared2)
         self.encoder_modular_projection = nn.Linear(512, 1024)
 
         decoder_config = copy.deepcopy(config)
@@ -1577,27 +1579,18 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
             )
-        elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
-            encoder_outputs = BaseModelOutput(
-                last_hidden_state=encoder_outputs[0],
-                hidden_states=encoder_outputs[1] if len(encoder_outputs) > 1 else None,
-                attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
-            )
-        if encoder_outputs.hidden_states!=None:
             scale_factor = 0.05
             encoder_modular_outputs = self.encoder_modular(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                inputs_embeds=inputs_embeds,
                 head_mask=head_mask,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
             )
-            encoder_modular_outputs2 = self.encoder_modular(
+            encoder_modular_outputs2 = self.encoder_modular2(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                inputs_embeds=inputs_embeds,
                 head_mask=head_mask,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
