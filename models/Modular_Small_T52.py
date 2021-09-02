@@ -1441,9 +1441,12 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
         encoder_config.is_decoder = False
         encoder_config.use_cache = False
         encoder_config.is_encoder_decoder = False
+        encoder_modular_config = T5Config.from_pretrained('google/t5-small-ssm')
+        encoder_modular_config.use_cache = False
+        encoder_modular_config.is_encoder_decoder = False
         self.encoder = T5Stack(encoder_config, self.shared)
-        self.kadapter = AdapterModel(encoder_config)
-        self.kadapter2 = AdapterModel(encoder_config)
+        self.encoder_modular = T5Stack(encoder_modular_config, self.shared)
+        self.encoder_modular_projection = nn.Linear(512, 1024)
 
         decoder_config = copy.deepcopy(config)
         decoder_config.is_decoder = True
@@ -1491,6 +1494,8 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
     def set_input_embeddings(self, new_embeddings):
         self.shared = new_embeddings
         self.encoder.set_input_embeddings(new_embeddings)
+        self.encoder_modular.set_input_embeddings(new_embeddings)
+        self.encoder_modular2.set_input_embeddings(new_embeddings)
         self.decoder.set_input_embeddings(new_embeddings)
 
     def set_output_embeddings(self, new_embeddings):
@@ -1568,8 +1573,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
                 inputs_embeds=inputs_embeds,
                 head_mask=head_mask,
                 output_attentions=output_attentions,
-                #output_hidden_states=output_hidden_states,
-                output_hidden_states=True,
+                output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
             )
         elif return_dict and not isinstance(encoder_outputs, BaseModelOutput):
@@ -1579,9 +1583,26 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
                 attentions=encoder_outputs[2] if len(encoder_outputs) > 2 else None,
             )
         if encoder_outputs.hidden_states!=None:
-            hidden_states = self.kadapter(encoder_outputs)
-            hidden_states2 = self.kadapter2(encoder_outputs)
-            hidden_states = hidden_states + hidden_states2
+            scale_factor = 0.05
+            encoder_modular_outputs = self.encoder_modular(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                inputs_embeds=inputs_embeds,
+                head_mask=head_mask,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+            encoder_modular_outputs2 = self.encoder_modular(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                inputs_embeds=inputs_embeds,
+                head_mask=head_mask,
+                output_attentions=output_attentions,
+                output_hidden_states=output_hidden_states,
+                return_dict=return_dict,
+            )
+            hidden_states = encoder_outputs[0] + (scale_factor * self.encoder_modular_projection(encoder_modular_outputs[0] + encoder_modular_outputs2[0]))
         else:
             hidden_states = encoder_outputs[0]
 
@@ -1721,33 +1742,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
             reordered_decoder_past = reordered_decoder_past + (reordered_layer_past_states,)
         return reordered_decoder_past
 
-class AdapterModel(nn.Module):
-    def __init__(self, pretrained_config):
-        super(AdapterModel, self).__init__()
-        self.config = pretrained_config
-        self.adapter_list = [1,11]
-        self.adapter_num = len(self.adapter_list)
-        self.layer_norm = T5LayerNorm(self.config.d_model, eps=self.config.layer_norm_epsilon)
-        self.adapter = nn.ModuleList(
-            [T5Block(self.config, has_relative_attention_bias=bool(i == 0)) for i in range(self.adapter_num)]
-        )
 
-    def forward(self, pretrained_model_outputs):
-        outputs = pretrained_model_outputs
-        sequence_output = outputs[0]
-        hidden_states = outputs.hidden_states
-        device = 'cuda:'+str(sequence_output.get_device())
-        hidden_states_last = torch.zeros(sequence_output.size(), device=device)
-
-        for i, adapter_module in enumerate(self.adapter):
-            pretrained_hidden_state = hidden_states[self.adapter_list[i]]
-            fusion_state = pretrained_hidden_state + hidden_states_last
-            hidden_states_last = adapter_module(fusion_state)[0]
-
-        scale_factor = 0.1
-        outputs = (scale_factor * self.layer_norm(hidden_states_last)) + (sequence_output * 0.5)
-        #return outputs + (pretrained_model_outputs[1:],) 
-        return outputs
 
 @add_start_docstrings(
     "The bare T5 Model transformer outputting encoder's raw hidden-states" "without any specific head on top.",
@@ -1766,6 +1761,12 @@ class T5EncoderModel(T5PreTrainedModel):
         encoder_config.use_cache = False
         encoder_config.is_encoder_decoder = False
         self.encoder = T5Stack(encoder_config, self.shared)
+        encoder_modular_config = T5Config.from_pretrained('google/t5-small-ssm')
+        encoder_modular_config.use_cache = False
+        encoder_modular_config.is_encoder_decoder = False
+        self.encoder_modular = T5Stack(encoder_modular_config, self.shared)
+        self.encoder_modular2 = T5Stack(encoder_modular_config, self.shared)
+        self.encoder_modular_projection = nn.Linear(512, 1024)
 
         self.init_weights()
 
@@ -1847,5 +1848,14 @@ class T5EncoderModel(T5PreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
+        encoder_modular_outputs = self.encoder_modular(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            inputs_embeds=inputs_embeds,
+            head_mask=head_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
 
-        return encoder_outputs
+        return encoder_outputs + self.encoder_modular_projection(encoder_modular_outputs)

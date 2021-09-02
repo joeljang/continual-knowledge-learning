@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 from models.Modular_T5 import T5ForConditionalGeneration as T5_Modular
 from models.Modular_Small_T5 import T5ForConditionalGeneration as T5_Modular_Small
+from models.Modular_Small_T52 import T5ForConditionalGeneration as T5_Modular_Small2
 from models.Kadapter_T5 import T5ForConditionalGeneration as T5_Kadapter
 from models.Kadapter_T52 import T5ForConditionalGeneration as T5_Kadapter2
 from models.Lora_T5 import T5ForConditionalGeneration as T5_Lora
@@ -50,6 +51,9 @@ class T5(pl.LightningModule):
             self.model = T5_Modular.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='modular_small':
             self.model = T5_Modular_Small.from_pretrained(hparams.model_name_or_path)
+        elif hparams.method=='modular_small2': 
+            previous_model_dir = (hparams.output_dir)[:len(hparams.output_dir)-1]
+            self.model = T5_Modular_Small2.from_pretrained(previous_model_dir)
         elif hparams.method=='kadapter':
             self.model = T5_Kadapter.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='kadapter2':
@@ -83,9 +87,13 @@ class T5(pl.LightningModule):
         elif hparams.freeze_level==2: # Freeze encoder and decoder
             self.freeze_params(self.model) 
 
-        if 'modular' in hparams.method:
+        if hparams.method=='modular_small':
             for name, param in self.model.named_parameters():
                 if 'encoder_modular' in name:
+                    param.requires_grad = True
+        elif hparams.method=='modular_small2':
+            for name, param in self.model.named_parameters():
+                if 'encoder_modular2' in name or name=='encoder_modular_projection':
                     param.requires_grad = True
         elif hparams.method=='kadapter':
             # Unfreezing the parameters used for lora
@@ -572,7 +580,7 @@ class T5(pl.LightningModule):
     def on_train_end(self):
         if self.hparams.method=='recadam':
             self.pretrained_model = self.model
-        elif self.hparams.method=='kadapter' or self.hparams.method=='lora' or self.hparams.method=='prune':
+        elif self.hparams.method=='kadapter' or self.hparams.method=='lora' or self.hparams.method=='prune' or self.hparams.method=='modular_small':
             self.model.save_pretrained(self.hparams.output_dir)
 
     def validation_step(self, batch, batch_idx):
