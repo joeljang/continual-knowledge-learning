@@ -1,10 +1,10 @@
 {
-    "finetuning_ratio": 0.2,
+    "finetuning_ratio": 0.1,
     "input_length" : 50,
     "output_length" : 10,
-    "num_train_epochs" : 4,
+    "num_train_epochs" : 5,
     "output_dir" : "",
-    "dataset" : "recentnews",
+    "dataset" : "recentqa",
     "dataset_version" : "small",
     "train_batch_size" : 8,
     "learning_rate" : 1e-3,
@@ -20,9 +20,9 @@
     "CUDA_VISIBLE_DEVICES" : "4,5,6,7",
     "wandb_log": false,
     "wandb_project": "continual_learning_finetuning",
-    "wandb_run_name" : "T5_large_recentprobe_finetuning_lr.001_baseline",
+    "wandb_run_name" : "T5_large_recentprobe_finetuning_baseline",
     "mode" : "finetune",
     "use_lr_scheduling" : false,
-    "check_validation" : true,
+    "check_validation" : false,
     "checkpoint_path" : ""
 }

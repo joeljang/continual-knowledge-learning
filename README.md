@@ -21,7 +21,7 @@ To download the data used for ALL of the experiments,
 python download_data.py
 
 #if using azcopy
-azcopy cp https://continual.blob.core.windows.net/recentnews/recentnews ./ --recursive
+azcopy cp https://continual.blob.core.windows.net/recentnews/data ./ --recursive
 azcopy cp https://continual.blob.core.windows.net/recentnews/model_checkpoints ./ --recursive
 ```
 

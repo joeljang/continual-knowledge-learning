@@ -1,10 +1,15 @@
 import pytorch_lightning as pl
 from models.Modular_T5 import T5ForConditionalGeneration as T5_Modular
 from models.Modular_Small_T5 import T5ForConditionalGeneration as T5_Modular_Small
+from models.Modular_Small_T52 import T5ForConditionalGeneration as T5_Modular_Small2
 from models.Kadapter_T5 import T5ForConditionalGeneration as T5_Kadapter
+from models.Kadapter_T52 import T5ForConditionalGeneration as T5_Kadapter2
 from models.Lora_T5 import T5ForConditionalGeneration as T5_Lora
+from models.Lora_T52 import T5ForConditionalGeneration as T5_Lora2
 from models.RecAdam import RecAdam, anneal_function
+from transformers import T5Config
 import torch.nn.utils.prune as prune
+import torch.nn.functional as F
 from transformers import (
     AdamW,
     Adafactor,
@@ -30,6 +35,7 @@ import string
 from string import punctuation
 import os
 from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu, sentence_bleu
+import copy
 
 class T5(pl.LightningModule):
     def __init__(self, hparams):
@@ -45,14 +51,30 @@ class T5(pl.LightningModule):
             self.model = T5_Modular.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='modular_small':
             self.model = T5_Modular_Small.from_pretrained(hparams.model_name_or_path)
+        elif hparams.method=='modular_small2': 
+            previous_model_dir = (hparams.output_dir)[:len(hparams.output_dir)-1]
+            self.model = T5_Modular_Small2.from_pretrained(previous_model_dir)
         elif hparams.method=='kadapter':
             self.model = T5_Kadapter.from_pretrained(hparams.model_name_or_path)
+        elif hparams.method=='kadapter2':
+            previous_model_dir = (hparams.output_dir)[:len(hparams.output_dir)-1]
+            self.model = T5_Kadapter2.from_pretrained(previous_model_dir)
         elif hparams.method=='lora':
             self.model = T5_Lora.from_pretrained(hparams.model_name_or_path)
+        elif hparams.method=='lora2':
+            previous_model_dir = (hparams.output_dir)[:len(hparams.output_dir)-1]
+            self.model = T5_Lora2.from_pretrained(previous_model_dir)
         elif hparams.method=='recadam':
             self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
             self.pretrained_model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
             self.freeze_params(self.pretrained_model) #Freezing pretrained model
+        elif hparams.method=='recadam2':
+            self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
+            self.pretrained_model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
+            self.freeze_params(self.pretrained_model) #Freezing pretrained model
+        elif hparams.method=='prune2':
+            previous_model_dir = (hparams.output_dir)[:len(hparams.output_dir)-1]
+            self.model = T5ForConditionalGeneration.from_pretrained(previous_model_dir)
         else:
             self.model = T5ForConditionalGeneration.from_pretrained(hparams.model_name_or_path)
         self.tokenizer = T5Tokenizer.from_pretrained(hparams.tokenizer_name_or_path)
@@ -65,9 +87,13 @@ class T5(pl.LightningModule):
         elif hparams.freeze_level==2: # Freeze encoder and decoder
             self.freeze_params(self.model) 
 
-        if 'modular' in hparams.method:
+        if hparams.method=='modular_small':
             for name, param in self.model.named_parameters():
                 if 'encoder_modular' in name:
+                    param.requires_grad = True
+        elif hparams.method=='modular_small2':
+            for name, param in self.model.named_parameters():
+                if 'encoder_modular2' in name or name=='encoder_modular_projection':
                     param.requires_grad = True
         elif hparams.method=='kadapter':
             # Unfreezing the parameters used for lora
@@ -79,7 +105,17 @@ class T5(pl.LightningModule):
             for name, param in self.model.named_parameters():
                 if 'lora' in name:
                     param.requires_grad = True
-        elif hparams.method=='prune':
+        elif hparams.method=='kadapter2':
+            # Unfreezing the parameters used for lora
+            for name, param in self.model.named_parameters():
+                if 'kadapter2' in name:
+                    param.requires_grad = True
+        elif hparams.method=='lora2':
+            # Unfreezing the parameters used for lora
+            for name, param in self.model.named_parameters():
+                if 'lora2' in name:
+                    param.requires_grad = True
+        elif hparams.method=='prune' or hparams.method=='prune2':
             # Important: This property activates manual optimization.
             self.automatic_optimization = False
             trainable_param_cnt=0
@@ -95,7 +131,73 @@ class T5(pl.LightningModule):
                     self.pruning_params[name] = pruned
             print(f'Trainable parameters count: {trainable_param_cnt}')
             self.log("trainable_param_count", trainable_param_cnt)
-        self.step_count = 0
+        elif hparams.method=='prune_new':
+            self.automatic_optimization = False
+            pruner = prune.L1Unstructured(amount=1-hparams.prune_ratio)
+            for name, param in self.model.named_parameters():
+                if 'SelfAttention' in name and not ('decoder' in name):
+                    zeros = torch.zeros(param.data.size())
+                    rec = torch.abs(1 / param.data)   
+                    out = F.normalize(rec)
+                    pruned = pruner.prune(out)
+                    self.pruning_params[name] = pruned
+        elif 'prune_lw' in hparams.method:
+            self.automatic_optimization = False
+            configs = T5Config(model_type=hparams.model_name_or_path)
+            if "small" in hparams.model_name_or_path:
+                num_enc_layers = 8
+            else:
+                num_enc_layers = 24
+            for name, param in self.model.named_parameters():
+                if 'SelfAttention' in name and not ('decoder' in name):
+                    name_s = name.split('.')
+                    layer_num = int(name_s[2]) + 1
+                    if 'dec' in hparams.method:
+                        importance = layer_num/num_enc_layers
+                        p_ratio = 1 - ((hparams.prune_ratio * 2 ) * importance)
+                    elif 'inc' in hparams.method:
+                        importance = ( num_enc_layers - (layer_num - 1) ) / num_enc_layers
+                        p_ratio = 1 - ((hparams.prune_ratio * 2) * importance)
+                    elif 'thin' in hparams.method:
+                        num_layers = num_enc_layers / 2
+                        if layer_num <= num_layers:
+                            importance = ( num_layers - (layer_num - 1) ) / num_layers
+                        else:
+                            layer_n = layer_num - num_layers
+                            importance = layer_n/num_layers
+                        p_ratio = 1 - ((hparams.prune_ratio * 2) * importance)
+                    elif 'fat' in hparams.method:
+                        num_layers = num_enc_layers / 2
+                        if layer_num <= num_layers:
+                            importance = layer_num/num_layers
+                        else:
+                            layer_n = layer_num - num_layers
+                            importance = ( num_layers - (layer_n - 1) ) / num_layers
+                        p_ratio = 1 - ((hparams.prune_ratio * 2) * importance)
+                    pruner = prune.L1Unstructured(amount=p_ratio)
+                    zeros = torch.zeros(param.data.size())
+                    rec = torch.abs(1 / param.data)   
+                    out = F.normalize(rec)
+                    pruned = pruner.prune(out)
+                    self.pruning_params[name] = pruned          
+        elif 'layerwiselr' in hparams.method:
+            self.automatic_optimization = False 
+            configs = T5Config(model_type=hparams.model_name_or_path)
+            if "small" in hparams.model_name_or_path:
+                num_enc_layers = 8
+            else:
+                num_enc_layers = 24
+            for name, param in self.model.named_parameters():
+                if 'SelfAttention' in name and not ('decoder' in name):
+                    name_s = name.split('.')
+                    layer_num = int(name_s[2]) + 1
+                    if 'dec' in hparams.method:
+                        importance = layer_num/num_enc_layers
+                    else:
+                        importance = ( num_enc_layers - (layer_num - 1) ) / num_enc_layers
+                    self.pruning_params[name] = importance
+        elif 'prune_iter' in hparams.method:
+            self.automatic_optimization = False
         self.output_dir = self.hparams.output_dir
             
         n_observations_per_split = {
@@ -106,7 +208,7 @@ class T5(pl.LightningModule):
         self.n_obs = {k: v if v >= 0 else None for k, v in n_observations_per_split.items()}
         self.em_score_list = []
         self.subset_score_list =[]
-        
+
     def normalize_answer(self, s):
         """Lower text and remove punctuation, articles and extra whitespace."""
 
@@ -406,38 +508,85 @@ class T5(pl.LightningModule):
             self.log('em_score', em_score, prog_bar=True, logger=True)
             self.log('subset_match_score', subset_match_score, prog_bar=True, logger=True)
         #self.log('bleu_score', bleu_score, prog_bar=True, logger=True)
-    
 
     def training_step(self, batch, batch_idx):
-        if self.hparams.method=='prune':
+        if 'prune' in self.hparams.method or 'layerwiselr' in self.hparams.method:
+            sch = self.lr_schedulers()
             opt = self.optimizers()
-            opt.zero_grad()
             loss = self._step(batch)
             self.manual_backward(loss)
-            self.zero_grads()
-            opt.step()
+            if (batch_idx + 1) % self.hparams.gradient_accumulation_steps == 0:
+                if self.hparams.method=='prune_iter':
+                    self.iter_prune()
+                elif self.hparams.method=='prune_iter_new':
+                    self.iter_prune_new()
+                else:
+                    self.zero_grads()
+                opt.step()
+                sch.step()
+                opt.zero_grad()
         else:
             loss = self._step(batch)
         self.log("loss", loss)
         return loss
 
+    def iter_prune(self):
+        pruner = prune.L1Unstructured(amount=self.hparams.prune_ratio)
+        for name, param in self.model.named_parameters():
+            if 'SelfAttention' in name and not ('decoder' in name):
+                device = 'cuda:'+str(param.grad.get_device())
+                ones = torch.ones(param.data.size()).to(device=device)
+                zeros = torch.zeros(param.data.size()).to(device=device)
+                pruned = pruner.prune(param.data)
+                pruned = torch.where(pruned!=0, pruned, ones)
+                pruned = torch.where(pruned==1, pruned, zeros)
+                #pruned = pruned.to(device=device)
+                param.grad = param.grad * pruned
+
+    def iter_prune_new(self):
+        pruner = prune.L1Unstructured(amount=1-self.hparams.prune_ratio)
+        for name, param in self.model.named_parameters():
+            if 'SelfAttention' in name and not ('decoder' in name):
+                rec = torch.abs(1 / param.data)   
+                out = F.normalize(rec)
+                pruned = pruner.prune(out)
+                param.grad = param.grad * pruned
+
     def zero_grads(self):
         for name, param in self.model.named_parameters():
             if name in self.pruning_params:
-                pruned = self.pruning_params[name]
-                device = 'cuda:'+str(param.grad.get_device())
-                pruned = pruned.to(device=device)
+                pruned = self.pruning_params[name]        
+                if not ('layerwiselr' in self.hparams.method):
+                    device = 'cuda:'+str(param.grad.get_device())
+                    pruned = pruned.to(device=device)
                 param.grad = param.grad * pruned
 
     def on_train_epoch_start(self):
         if self.hparams.method=='mixreview':
             train_set = self.train_dataloader().dataset
+        if self.hparams.method=='prune_iter_e':
+            pruner = prune.L1Unstructured(amount=self.hparams.prune_ratio)
+            for name, param in self.model.named_parameters():
+                if not ('layer_norm' in name) and not ('decoder' in name):
+                    device = 'cuda:'+str(param.get_device())
+                    ones = torch.ones(param.data.size()).to(device=device)
+                    zeros = torch.zeros(param.data.size()).to(device=device)
+                    pruned = pruner.prune(param.data)
+                    pruned = torch.where(pruned!=0, pruned, ones)
+                    pruned = torch.where(pruned==1, pruned, zeros)
+                    self.pruning_params[name] = pruned
         self.epoch+=1
+    
+    def on_train_end(self):
+        if self.hparams.method=='recadam':
+            self.pretrained_model = self.model
+        elif self.hparams.method=='kadapter' or self.hparams.method=='lora' or self.hparams.method=='prune' or self.hparams.method=='modular_small':
+            self.model.save_pretrained(self.hparams.output_dir)
 
     def validation_step(self, batch, batch_idx):
         return self._generative_step(batch, batch_idx)
 
-    def configure_optimizers(self):
+    def configure_optimizers(self, train_len=None):
         "Prepare optimizer and schedule (linear warmup and decay)"
         if self.hparams.method=='recadam':
             no_decay = ["bias", "LayerNorm.weight"]
@@ -508,40 +657,50 @@ class T5(pl.LightningModule):
             #denomniator = self.hparams.n_gpu * self.hparams.gradient_accumulation_steps
             denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 3 # Do not decay learning rate to 0 for small set 
             if self.hparams.dataset_version=='full':
-                denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 2 # Do not decay learning rate to 0 for small set 
-            steps_per_epoch = ( len_data // denomniator ) + 1 
+                denomniator = (self.hparams.n_gpu * self.hparams.gradient_accumulation_steps) // 2 # Do not decay learning rate to 0 for full set 
+            steps_per_epoch = ( len_data // denomniator ) + 1
             lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=self.hparams.learning_rate, steps_per_epoch=steps_per_epoch, pct_start=0.1, epochs=self.hparams.num_train_epochs, anneal_strategy='linear', cycle_momentum=False)
             return [optimizer], [{"scheduler": lr_scheduler, "interval": "step", "name": "learning rate"}]
         else:
             return [optimizer]
 
-    def train_dataloader(self):   
+    def train_dataloader(self):
         n_samples = self.n_obs['train']
-        train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
-        
-        n_samples = self.n_obs['train']
-        train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
         if self.hparams.method=='mixreview':
+            if self.hparams.split_num==2:
+                train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="split", num_samples=n_samples, args=self.hparams)
+            else:
+                train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
             train_len = len(train_dataset)
             mix_len = int(len(train_dataset) * self.mix_ratio * (self.mix_decay ** self.epoch))
-            pretrain_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="pretrain", num_samples=n_samples, args=self.hparams, length=mix_len)
+            mix_len=3000 #only for debug
+            pretrain_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="pretrain", num_samples=n_samples, args=self.hparams, length=mix_len)  
+            if self.hparams.split==2:
+                args2 = copy.deepcopy(self.hparams)
+                args2.split = 1
+                previous_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="split", num_samples=n_samples, args=args2)  
+                pretrain_dataset = ConcatDataset([previous_dataset,pretrain_dataset])
             mixed_dataset = ConcatDataset([train_dataset,pretrain_dataset])
             print("mix len is ", mix_len)
             sampler=RandomSampler(mixed_dataset)
             dataloader = DataLoader(mixed_dataset, sampler = sampler, batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
             print("dataset length is ", len(dataloader.dataset))
-        else:
+        elif self.hparams.split_num==2:
+            train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="split", num_samples=n_samples, args=self.hparams)
+            sampler = RandomSampler(train_dataset)
+            dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)  
+        else:     
+            train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
             sampler = RandomSampler(train_dataset)
             dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
         return dataloader
 
     def val_dataloader(self):
         n_samples = self.n_obs['validation']
-        
-        validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams)
+        validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams,)
         #sampler=RandomSampler(validation_dataset)
-        return DataLoader(validation_dataset, batch_size=self.hparams.eval_batch_size, num_workers=self.hparams.num_workers, shuffle=False)
-    
+        dataloader = DataLoader(validation_dataset, batch_size=self.hparams.eval_batch_size, num_workers=self.hparams.num_workers, shuffle=False)
+        return dataloader
     
     def test_dataloader(self):
         n_samples = self.n_obs['test']

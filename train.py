@@ -14,6 +14,7 @@ from transformers import (
 )
 from torch.utils.data import DataLoader
 from models import load_model
+import time
 
 from Datasets import Pretrain
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
@@ -49,21 +50,31 @@ if __name__ == '__main__':
 
     #Init configs that are not given
     if 'finetuning_ratio' not in hparam:
-        hparam.finetuning_ratio=0.0
+        hparam.finetuning_ratio = 0.0
     if 'prune_ratio' not in hparam:
-        hparam.prune_ratio=0.0
+        hparam.prune_ratio = 0.0
+    if 'split_num' not in hparam:
+        hparam.split_num = 1
+    if 'split' not in hparam:
+        hparam.split = 0
 
     #If using pruning method, no grad_norm
-    if hparam.method=='prune':
+    if 'prune' in hparam.method or 'layerwiselr' in hparam.method:
         grad_norm = None
     else:
         grad_norm = 0.5
+
+    #If using pruning method, no grad_norm
+    if 'weight_decay' not in hparam:
+        hparam.weight_decay = 0.0
         
     #Setting configurations
     args_dict = dict(
         output_dir=hparam.output_dir, # Path to save the checkpoints
         dataset=hparam.dataset,
         dataset_version = hparam.dataset_version,
+        split_num = hparam.split_num,
+        split = hparam.split,
         finetuning_ratio = hparam.finetuning_ratio,
         prune_ratio = hparam.prune_ratio,
         model_name_or_path=hparam.model,
@@ -76,7 +87,7 @@ if __name__ == '__main__':
         freeze_encoder=False,
         freeze_embeds=False,
         learning_rate=hparam.learning_rate,
-        weight_decay=0.0,
+        weight_decay=hparam.weight_decay,
         adam_epsilon=1e-8,
         warmup_steps=0,
         train_batch_size=hparam.train_batch_size,
@@ -106,7 +117,11 @@ if __name__ == '__main__':
     if args.dataset_version=='full':
         callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True, every_n_val_epochs=1)]
     else:
-        callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True)]
+        if args.split_num==2:
+            #callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True, every_n_val_epochs=args.num_train_epochs // 2)]
+            callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True)]
+        else:
+            callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True)]
     checkpoint_callback = True
 
     if args.output_dir=="":
@@ -148,12 +163,12 @@ if __name__ == '__main__':
         model_type='GPT2'
     else:
         raise Exception('Select the correct model. Supporting "t5" and "gpt2" only.')
-    T5Model = load_model(name=args.method, type=model_type)
+    T5Model = load_model(type=model_type)
     
     if args.check_validation_only:
         model = T5Model(args)
         if args.checkpoint_path!="":
-            model = T5Model.load_from_checkpoint(checkpoint_path=args.checkpoint_path, hparams=args)
+            model = T5Model.load_from_checkpoint(checkpoint_path=args.checkpoint_path, hparams=args, strict=False)
 
         model.eval()
         model.to('cuda')
@@ -223,6 +238,11 @@ if __name__ == '__main__':
                             rp_em_correct_num+=1
                         if subset == 1:
                             rp_subset_correct_num+=1
+                elif args.dataset == 'recentprobe':
+                    if em == 1:
+                        em_correct_num+=1
+                    if subset == 1:
+                        subset_correct_num+=1
                 else:
                     # zero-shot accuracy for WnED and CWEB
                     accuracy = model.accuracy_match_score(predicted, ground_truth)
@@ -232,17 +252,20 @@ if __name__ == '__main__':
                         em_correct_num+=1
                     if subset == 1:
                         subset_correct_num+=1  
-            if args.dataset == 'recentnews':
-                print(f'Number of total validation data: {total_cnt}')
-                print(f'Number of correct lama predictions out of 20725 : {em_correct_num, subset_correct_num}. Percentage : {em_correct_num / 20725, subset_correct_num / 20725}')
-                print(f'Number of correct recentprobe predictions out of {rp_cnt} : {rp_em_correct_num, rp_subset_correct_num}. Percentage : {rp_em_correct_num / rp_cnt, rp_subset_correct_num / rp_cnt}')
-            else:
-                print(f'Number of total validation data: {total_cnt}')
-                print(f'Number of correct predictions: {accuracy_correct_num, em_correct_num, subset_correct_num}. Percentage : {accuracy_correct_num / total_cnt, em_correct_num / total_cnt, subset_correct_num / total_cnt}')
+        if args.dataset == 'recentnews':
+            print(f'Number of total validation data: {total_cnt}')
+            print(f'Number of correct lama predictions out of 20725 : {em_correct_num, subset_correct_num}. Percentage : {em_correct_num / 20725, subset_correct_num / 20725}')
+            print(f'Number of correct recentprobe predictions out of {rp_cnt} : {rp_em_correct_num, rp_subset_correct_num}. Percentage : {rp_em_correct_num / rp_cnt, rp_subset_correct_num / rp_cnt}')
+        elif args.dataset == 'recentprobe':
+            print(f'Number of total validation data: {total_cnt}')
+            print(f'Number of correct predictions: {em_correct_num, subset_correct_num}. Percentage : {(em_correct_num / total_cnt)*100, (subset_correct_num / total_cnt)*100}')
+        else:
+            print(f'Number of total validation data: {total_cnt}')
+            print(f'Number of correct predictions: {accuracy_correct_num, em_correct_num, subset_correct_num}. Percentage : {accuracy_correct_num / total_cnt, em_correct_num / total_cnt, subset_correct_num / total_cnt}')
     else:
         set_seed(40)
         if args.checkpoint_path!="":
-            model = T5Model.load_from_checkpoint(checkpoint_path=args.checkpoint_path, hparams=args) 
+            model = T5Model.load_from_checkpoint(checkpoint_path=args.checkpoint_path, hparams=args, strict=False) 
         else:
             model = T5Model(args)
         trainer = pl.Trainer(**train_params)
