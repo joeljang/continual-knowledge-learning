@@ -86,6 +86,11 @@ class GPT2(pl.LightningModule):
                     self.pruning_params[name] = pruned
             print(f'Trainable parameters count: {trainable_param_cnt}')
             self.log("trainable_param_count", trainable_param_cnt)
+        elif hparams.method=='modular':
+            # Unfreezing the parameters used for lora
+            for name, param in self.model.named_parameters():
+                if 'modular' in name or 'lm_head' in name:
+                    param.requires_grad = True
         elif hparams.method=='prune_iter_e':
             # Important: This property activates manual optimization.
             self.automatic_optimization = False
