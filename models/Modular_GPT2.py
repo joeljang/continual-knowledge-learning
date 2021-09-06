@@ -818,35 +818,6 @@ class GPT2Model(GPT2PreTrainedModel):
     GPT2_START_DOCSTRING,
 )
 
-
-class AdapterModel(nn.Module):
-    def __init__(self, pretrained_config):
-        super(AdapterModel, self).__init__()
-        self.config = pretrained_config
-        self.embed_dim = self.config.hidden_size
-        self.adapter_list = [1,11]
-        self.adapter_num = len(self.adapter_list)
-        self.layer_norm = nn.LayerNorm(self.embed_dim, eps=self.config.layer_norm_epsilon)
-        self.adapter = nn.ModuleList(
-            [GPT2Block(self.config) for i in range(self.adapter_num)]
-        )
-
-    def forward(self, pretrained_model_outputs):
-        outputs = pretrained_model_outputs
-        sequence_output = outputs[0]
-        hidden_states = outputs.hidden_states
-        device = 'cuda:'+str(sequence_output.get_device())
-        hidden_states_last = torch.zeros(sequence_output.size(), device=device)
-
-        for i, adapter_module in enumerate(self.adapter):
-            pretrained_hidden_state = hidden_states[self.adapter_list[i]]
-            fusion_state = pretrained_hidden_state + hidden_states_last
-            hidden_states_last = adapter_module(fusion_state)[0]
-
-        scale_factor = 0.1
-        outputs = (scale_factor * self.layer_norm(hidden_states_last)) + sequence_output
-        return outputs
-
 class GPT2LMHeadModel(GPT2PreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"attn.masked_bias", r"attn.bias", r"lm_head.weight"]
 
@@ -855,6 +826,7 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
         self.transformer = GPT2Model(config)
         modular_config = GPT2Config.from_pretrained('gpt2')
         self.modular = GPT2Model(modular_config)
+        self.projection_up = nn.Linear(modular_config.n_embd, config.n_embd, bias=False)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
         self.init_weights()
@@ -878,7 +850,7 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
 
     @add_start_docstrings(DEPARALLELIZE_DOCSTRING)
     def deparallelize(self):
-        self.transfoxrmer.deparallelize()
+        self.transformer.deparallelize()
         self.transformer = self.transformer.to("cpu")
         self.lm_head = self.lm_head.to("cpu")
         self.model_parallel = False
@@ -963,30 +935,27 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
             encoder_attention_mask=encoder_attention_mask,
             use_cache=use_cache,
             output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
+            output_hidden_states=True,
+            return_dict=return_dict
         )
-        if transformer_outputs.hidden_states!=None:
-            modular_outputs = self.modular(
-                input_ids,
-                past_key_values=past_key_values,
-                attention_mask=attention_mask,
-                token_type_ids=token_type_ids,
-                position_ids=position_ids,
-                head_mask=head_mask,
-                #inputs_embeds=inputs_embeds,
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-            )
-            scale_factor = 0.05
-            hidden_states = transformer_outputs[0] + (scale_factor * modular_outputs[0])
-        else:
-            hidden_states = transformer_outputs[0]
-
+        modular_outputs = self.modular(
+            input_ids,
+            past_key_values=past_key_values,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=True,
+            return_dict=return_dict
+        )
+        scale_factor = 0.05
+        hidden_states = transformer_outputs[0] + (scale_factor * self.projection_up(modular_outputs[0]))
+        
         # Set device for model parallelism
         if self.model_parallel:
             torch.cuda.set_device(self.transformer.first_device)

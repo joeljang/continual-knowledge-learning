@@ -962,9 +962,10 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
             encoder_attention_mask=encoder_attention_mask,
             use_cache=use_cache,
             output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
+            output_hidden_states=True,
             return_dict=return_dict,
         )
+        
         if transformer_outputs.hidden_states!=None:
             hidden_states = self.kadapter(transformer_outputs)
         else:
