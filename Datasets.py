@@ -75,7 +75,13 @@ class Pretrain(Dataset):
                 self.dataset = pd.read_csv('data/lama_template.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))         
         elif self.args.dataset == 'recentprobe' or self.args.dataset == 'recentqa':
             if self.dataset_version == 'small':
-                rp_dir = 'data/recentprobe_paq_small.csv'
+                if self.args.split:
+                    if self.args.split==1:
+                        rp_dir = 'data/split/recentprobe_small1.csv'
+                    else:
+                        rp_dir = 'data/split/recentprobe_small2.csv'
+                else:
+                    rp_dir = 'data/recentprobe_paq_small.csv'
             elif self.dataset_version == 'full':
                 rp_dir = 'data/recentprobe_paq_full.csv'
             original = pd.read_csv(rp_dir)

@@ -578,10 +578,11 @@ class T5(pl.LightningModule):
         self.epoch+=1
     
     def on_train_end(self):
-        if self.hparams.method=='recadam':
-            self.pretrained_model = self.model
-        elif self.hparams.method=='kadapter' or self.hparams.method=='lora' or self.hparams.method=='prune' or self.hparams.method=='modular_small':
-            self.model.save_pretrained(self.hparams.output_dir)
+        if self.hparams.mode == 'pretrain':
+            if self.hparams.method=='recadam':
+                self.pretrained_model = self.model
+            elif self.hparams.method=='kadapter' or self.hparams.method=='lora' or self.hparams.method=='prune' or self.hparams.method=='modular_small':
+                self.model.save_pretrained(self.hparams.output_dir)
 
     def validation_step(self, batch, batch_idx):
         return self._generative_step(batch, batch_idx)
