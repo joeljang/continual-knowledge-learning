@@ -1,5 +1,5 @@
-# python train.py --config configs/kilt/t5_modular_small/t5_fever.json 
-# python train.py --config configs/kilt/t5_modular_small/t5_hotpotqa.json
+python train.py --config configs/kilt/t5_modular_small/t5_fever.json 
+python train.py --config configs/kilt/t5_modular_small/t5_hotpotqa.json
 python train.py --config configs/kilt/t5_modular_small/t5_wow.json
 python train.py --config configs/kilt/t5_modular_small/t5_zsre.json
 python train.py --config configs/kilt/t5_modular_small/t5_nq.json

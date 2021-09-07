@@ -9,7 +9,7 @@
     "train_batch_size" : 32,
     "learning_rate" : 1e-3,
     "model" : "google/t5-large-ssm",
-    "method": "recadam",
+    "method": "models_baseline",
     "freeze_level": 0,
     "gradient_accumulation_steps" : 1,
     "ngpu" : 4,
@@ -19,10 +19,10 @@
     "use_deepspeed" : false,
     "CUDA_VISIBLE_DEVICES" : "4,5,6,7",
     "wandb_log": true,
-    "wandb_project": "continual_learning_finetuning_small",
+    "wandb_project": "continual_learning_finetuning_full",
     "wandb_run_name" : "T5_large_recadam_lama_finetuning_baseline",
     "mode" : "finetune",
     "use_lr_scheduling" : false,
     "check_validation" : false,
-    "checkpoint_path" : "../../continual-knowledge-learning/outputs/T5_large_recentnews(small)_lr.001_recadam/last.ckpt"
+    "checkpoint_path" : "outputs/recadam_last.ckpt"
 }

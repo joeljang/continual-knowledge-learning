@@ -2,7 +2,7 @@
     "finetuning_ratio": 0.05,
     "input_length" : 25,
     "output_length" : 4,
-    "num_train_epochs" : 1,
+    "num_train_epochs" : 5,
     "output_dir" : "",
     "dataset" : "lama",
     "dataset_version" : "small",
@@ -19,10 +19,10 @@
     "use_deepspeed" : false,
     "CUDA_VISIBLE_DEVICES" : "0,1,2,3",
     "wandb_log": true,
-    "wandb_project": "continual_learning_finetuning",
+    "wandb_project": "continual_learning_finetuning_small",
     "wandb_run_name" : "T5_large_lora_lama_finetuning_baseline",
     "mode" : "finetune",
     "use_lr_scheduling" : false,
     "check_validation" : false,
-    "checkpoint_path" : "output/last_lora.ckpt"
+    "checkpoint_path" : "outputs/small/small/lora_last.ckpt"
 }
