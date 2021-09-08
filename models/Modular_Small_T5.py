@@ -1446,8 +1446,7 @@ class T5ForConditionalGeneration(T5PreTrainedModel):
         encoder_modular_config.use_cache = False
         encoder_modular_config.is_encoder_decoder = False
         self.encoder = T5Stack(encoder_config, self.shared)
-        #self.encoder_modular = T5Stack(encoder_modular_config, self.shared2)
-        self.encoder_modular = T5EncoderModel.from_pretrained('google/t5-small-ssm')
+        self.encoder_modular = T5Stack(encoder_modular_config, self.shared2)
         self.encoder_modular_projection = nn.Linear(512, 1024)
 
         decoder_config = copy.deepcopy(config)

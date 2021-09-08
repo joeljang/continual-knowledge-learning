@@ -2,7 +2,7 @@
     "input_length" : 350,
     "output_length" : 350,
     "num_train_epochs" : 8,
-    "output_dir" : "outputs/T5_large_recentnews(small)_lr.001_baseline_freeze_encoder",
+    "output_dir" : "outputs/T5_large_recentnews(small)_baseline_fe_",
     "dataset" : "recentnews",
     "dataset_version" : "small",
     "train_batch_size" : 5,
