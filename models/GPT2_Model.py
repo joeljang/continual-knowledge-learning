@@ -1,4 +1,5 @@
 import pytorch_lightning as pl
+from models.Modular_GPT2 import GPT2LMHeadModel as GPT2_Modular
 from models.Kadapter_GPT2 import GPT2LMHeadModel as GPT2_Kadapter
 from models.Lora_GPT2 import GPT2LMHeadModel as GPT2_Lora
 from models.RecAdam import RecAdam, anneal_function
@@ -40,6 +41,8 @@ class GPT2(pl.LightningModule):
             self.model = GPT2_Kadapter.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='lora':
             self.model = GPT2_Lora.from_pretrained(hparams.model_name_or_path)
+        elif hparams.method=='modular':
+            self.model = GPT2_Modular.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='recadam':
             self.model = GPT2LMHeadModel.from_pretrained(hparams.model_name_or_path)
             self.pretrained_model = GPT2LMHeadModel.from_pretrained(hparams.model_name_or_path)
@@ -70,6 +73,10 @@ class GPT2(pl.LightningModule):
             for name, param in self.model.named_parameters():
                 if 'lora' in name or 'lm_head' in name:
                     param.requires_grad = True
+        #elif hparams.method=='modular':
+            #for name, param in self.model.named_parameters():
+            #    if ('modular' in name) or ('lm_head' in name) or ('projection_up' in name):
+            #        param.requires_grad = True
         elif hparams.method=='prune':
             # Important: This property activates manual optimization.
             self.automatic_optimization = False
