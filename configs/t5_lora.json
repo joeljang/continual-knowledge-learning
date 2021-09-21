@@ -18,7 +18,7 @@
     "use_deepspeed" : false,
     "CUDA_VISIBLE_DEVICES" : "0,1,2,3",
     "wandb_log": true,
-    "wandb_project": "continual_learning",
+    "wandb_project": "continual_learning_3",
     "wandb_run_name" : "T5_large_recentnews(small)_lr.001_lora",
     "mode" : "pretrain",
     "use_lr_scheduling" : true,

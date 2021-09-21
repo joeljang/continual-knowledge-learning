@@ -269,6 +269,13 @@ class T5(pl.LightningModule):
         recall = 1.0 * num_same / len(ground_truth_tokens)
         f1 = (2 * precision * recall) / (precision + recall)
         return f1
+    
+    def _f1_score_zeroshot(self, prediction, ground_truth):
+        prediction_tokens = self.normalize_answer(prediction).split()
+        ground_truth_tokens = self.normalize_answer(ground_truth).split()
+        common = Counter(prediction_tokens) & Counter(ground_truth_tokens)
+        num_same = sum(common.values())
+        return num_same, len(prediction_tokens), len(ground_truth_tokens)
 
     def calculate_scores(self, predictions, ground_truths):
         em_score = 0
@@ -674,7 +681,7 @@ class T5(pl.LightningModule):
                 train_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="train", num_samples=n_samples, args=self.hparams)
             train_len = len(train_dataset)
             mix_len = int(len(train_dataset) * self.mix_ratio * (self.mix_decay ** self.epoch))
-            mix_len=3000 #only for debug
+            # mix_len=3000 #only for debug
             pretrain_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="pretrain", num_samples=n_samples, args=self.hparams, length=mix_len)  
             if self.hparams.split==2:
                 args2 = copy.deepcopy(self.hparams)
@@ -696,12 +703,12 @@ class T5(pl.LightningModule):
             dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
         return dataloader
 
-    def val_dataloader(self):
-        n_samples = self.n_obs['validation']
-        validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams,)
-        #sampler=RandomSampler(validation_dataset)
-        dataloader = DataLoader(validation_dataset, batch_size=self.hparams.eval_batch_size, num_workers=self.hparams.num_workers, shuffle=False)
-        return dataloader
+    # def val_dataloader(self):
+    #     n_samples = self.n_obs['validation']
+    #     validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams,)
+    #     #sampler=RandomSampler(validation_dataset)
+    #     dataloader = DataLoader(validation_dataset, batch_size=self.hparams.eval_batch_size, num_workers=self.hparams.num_workers, shuffle=False)
+    #     return dataloader
     
     def test_dataloader(self):
         n_samples = self.n_obs['test']

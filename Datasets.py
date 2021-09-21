@@ -68,11 +68,20 @@ class Pretrain(Dataset):
             else:
                 self.dataset = self.get_recent_val(-1,-1) #Getting validation data for both LAMA-entity and RecentProbe
         elif self.args.dataset == 'lama':
-            original = pd.read_csv('data/lama_template.csv')
+            original = pd.read_csv('data/lama_invariant_template.csv')
             if type_path =='train':
-                self.dataset = pd.read_csv('data/lama_template.csv', nrows=int(len(original)*self.args.finetuning_ratio))
+                self.dataset = pd.read_csv('data/lama_invariant_template.csv', nrows=int(len(original)*self.args.finetuning_ratio))
             else:
-                self.dataset = pd.read_csv('data/lama_template.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))         
+                print("finetuning ratio is", self.args.finetuning_ratio)
+                self.dataset = pd.read_csv('data/lama_invariant_template.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))         
+        elif self.args.dataset == 'updatedprobe':
+            original = pd.read_csv('data/updated_lama.csv')
+            if type_path =='train':
+                self.dataset = pd.read_csv('data/updated_lama.csv', nrows=int(len(original)*self.args.finetuning_ratio))
+            else:
+                self.dataset = pd.read_csv('data/updated_lama.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))  
+            with open('data/updatedlama_val_answers.json') as f:
+                ids_to_answers = json.load(f)        
         elif self.args.dataset == 'recentprobe' or self.args.dataset == 'recentqa':
             if self.dataset_version == 'small':
                 if self.args.split:
@@ -173,7 +182,8 @@ class Pretrain(Dataset):
                     recent = pd.read_csv('data/split/recentprobe_debug2.csv')
             else:
                 recent = pd.read_csv('data/recentprobe_m_debug.csv')
-            lama = pd.read_csv('data/lama_template_debug.csv')
+            original = pd.read_csv('data/lama_invariant_template.csv')
+            lama = pd.read_csv('data/lama_invariant_template.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio)) 
         elif self.dataset_version=='small':
             if self.args.split:
                 if self.args.split==1:
@@ -182,15 +192,17 @@ class Pretrain(Dataset):
                     recent = pd.read_csv('data/split/recentprobe_small2.csv')
             else:
                 recent = pd.read_csv('data/recentprobe_m_small.csv')
-            lama = pd.read_csv('data/lama_template.csv')         
+            original = pd.read_csv('data/lama_invariant_template.csv')
+            lama = pd.read_csv('data/lama_invariant_template.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))              
         elif self.dataset_version=='full':
             recent = pd.read_csv('data/recentprobe_m_small.csv')
-            lama = pd.read_csv('data/lama_template.csv')
+            original = pd.read_csv('data/lama_invariant_template.csv')
+            lama = pd.read_csv('data/lama_invariant_template.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio)) 
         dataset = []
         for index, row in lama.iterrows():
             dataset.append(row)
-        for index, row in recent.iterrows():
-            dataset.append(row)
+        # for index, row in recent.iterrows():
+        #     dataset.append(row)
         return dataset
 
     def __len__(self):
@@ -235,6 +247,9 @@ class Pretrain(Dataset):
             elif self.model_type == 'T5':
                 input_ = example_batch['input']
                 target_ = example_batch['output']
+        elif self.args.dataset == 'updatedprobe':
+            input_ = example_batch['statement']
+            target_ = example_batch['new_answer']
         elif self.args.dataset == 'recentprobe':
             input_ = example_batch['input']
             target_ = example_batch['output']
@@ -269,8 +284,10 @@ class Pretrain(Dataset):
             answer_lst = []
             for entry in example_batch['output']:
                 answer_lst.append(entry['answer'])
+        elif self.args.dataset == 'updatedprobe' or self.args.dataset == 'lama' or (self.args.dataset == 'recentnews' and self.type_path == 'validation'):
+            labels = example_batch['id']
         else:
-            labels = None                         
+            labels = None                       
         return source, targets, labels
   
     def __getitem__(self, index):
@@ -289,7 +306,7 @@ class Pretrain(Dataset):
         target_mask = targets["attention_mask"].squeeze()
 
         if labels is not None:
-            if (self.args.dataset== 'TriviaQA' or self.args.dataset== 'fever' or self.args.dataset== 'AY2' or self.args.dataset== 'WNED' or self.args.dataset== 'CWEB' 
+            if (self.args.dataset == 'updatedprobe' or self.args.dataset == 'lama' or self.args.dataset== 'recentnews' or self.args.self.args.dataset== 'TriviaQA' or self.args.dataset== 'fever' or self.args.dataset== 'AY2' or self.args.dataset== 'WNED' or self.args.dataset== 'CWEB' 
             or self.args.dataset== 'TREX' or self.args.dataset== 'zsRE' or self.args.dataset== 'NQ' or self.args.dataset== 'HotpotQA' or self.args.dataset== 'ELI5' or self.args.dataset== 'WOW'):
                 label_ids = labels
             else:
