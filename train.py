@@ -120,7 +120,7 @@ if __name__ == '__main__':
 
     # Defining how to save model checkpoints during training. Details: https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.callbacks.model_checkpoint.html 
     if args.dataset_version=='full':
-        callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True, every_n_val_epochs=1)]
+        callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_top_k=-1, period=1)]
     else:
         if args.split_num==2:
             #callbacks = [ModelCheckpoint(dirpath = args.output_dir, save_last=True, every_n_val_epochs=args.num_train_epochs // 2)]
