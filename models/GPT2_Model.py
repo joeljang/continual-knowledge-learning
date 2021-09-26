@@ -26,6 +26,8 @@ from string import punctuation
 import os
 import random
 from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu, sentence_bleu
+import csv
+from collections import Counter
 
 class GPT2(pl.LightningModule):
     def __init__(self, hparams):
@@ -149,19 +151,35 @@ class GPT2(pl.LightningModule):
                 return match
         return match
 
+    def _f1_score(self, prediction, ground_truth):
+        prediction_tokens = self.normalize_answer(prediction).split()
+        ground_truth_tokens = self.normalize_answer(ground_truth).split()
+        common = Counter(prediction_tokens) & Counter(ground_truth_tokens)
+        num_same = sum(common.values())
+        if num_same == 0:
+            return 0
+        precision = 1.0 * num_same / len(prediction_tokens)
+        recall = 1.0 * num_same / len(ground_truth_tokens)
+        f1 = (2 * precision * recall) / (precision + recall)
+        return f1
+    
+
     def calculate_scores(self, predictions, ground_truths):
         em_score = 0
         subset_match_score = 0
+        f1_score = 0 
         
         for i in range(len(predictions)):
             ground_truth = ground_truths[i]
             prediction = predictions[i]
             em_score +=  self.exact_match_score(prediction, ground_truth)
             subset_match_score += self.approx_match_score(prediction, ground_truth)
+            f1_score += self._f1_score(prediction, ground_truth)
         
         em_score /= len(predictions)
         subset_match_score /= len(predictions)
-        return em_score*100, subset_match_score*100
+        f1_score /= len(predictions)
+        return em_score*100, subset_match_score*100, f1_score * 100
 
     def bleu(self, gen, ref):
         ''' 
@@ -285,6 +303,7 @@ class GPT2(pl.LightningModule):
                 clean_preds.append(text[:text.find(".")+1])
             else: 
                 clean_preds.append(text)
+        source = self.ids_to_clean_text(batch["source_ids"])
         print("clean_preds",clean_preds)
         targets = self.ids_to_clean_text(batch["label_ids"])
         print("targets",targets)
@@ -295,13 +314,14 @@ class GPT2(pl.LightningModule):
 
         self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         summ_len = np.mean(self.lmap(len, generated_ids))
-        em_score, subset_match_score = self.calculate_scores(preds, targets)
+        em_score, subset_match_score, f1_score = self.calculate_scores(clean_preds, targets)
         #bleu_score = self.bleu(preds,targets)
         self.em_score_list.append(em_score)
         self.subset_score_list.append(subset_match_score)
         
         em_score = torch.tensor(em_score,dtype=torch.float32)
         subset_match_score = torch.tensor(subset_match_score,dtype=torch.float32)
+        f1_score = torch.tensor(f1_score,dtype=torch.float32)
         #bleu_score = torch.tensor(bleu_score,dtype=torch.float32)
         if self.hparams.dataset_version=='debug':
             lama_len = 1202
@@ -317,12 +337,15 @@ class GPT2(pl.LightningModule):
         elif self.hparams.dataset=='lama':
             self.log('lama_em_score', em_score, prog_bar=True, logger=True)
             self.log('lama_subset_match_score', subset_match_score, prog_bar=True, logger=True)
+            self.log('lama_f1_score', f1_score, prog_bar=True, logger=True)
         elif self.hparams.dataset=='recentprobe':
             self.log('recent_em_score', em_score, prog_bar=True, logger=True)
             self.log('recent_subset_match_score', subset_match_score, prog_bar=True, logger=True)
+            self.log('recent_f1_score', f1_score, prog_bar=True, logger=True)
         else:
             self.log('em_score', em_score, prog_bar=True, logger=True)
             self.log('subset_match_score', subset_match_score, prog_bar=True, logger=True)
+            self.log('f1_score', f1_score, prog_bar=True, logger=True)
         #self.log('bleu_score', bleu_score, prog_bar=True, logger=True)
     
     def training_step(self, batch, batch_idx):

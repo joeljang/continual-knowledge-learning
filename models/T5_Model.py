@@ -36,6 +36,7 @@ from string import punctuation
 import os
 from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu, sentence_bleu
 import copy
+import csv
 
 class T5(pl.LightningModule):
     def __init__(self, hparams):
@@ -294,6 +295,51 @@ class T5(pl.LightningModule):
         accuracy /= len(predictions)
         return em_score*100, subset_match_score*100, accuracy*100
     
+    def calculate_scores_updated(self, predictions, ground_truths, ids):
+        old_em_score = 0
+        old_subset_match_score = 0
+        new_em_score = 0
+        new_subset_match_score = 0
+        for i in range(len(predictions)):
+            unique_id = ids[i].item()
+            old_answer_list = self.ids_to_answers[str(unique_id)][0]['old']
+            new_answer_list = self.ids_to_answers[str(unique_id)][0]['new']
+
+            prediction = predictions[i]
+            old_em_correct = False
+            old_sm_correct = False
+            new_em_correct = False
+            new_sm_correct = False
+            for answer in old_answer_list:
+                em  = self.exact_match_score(prediction, answer)
+                if em == 1:
+                    old_em_correct = True
+                sm = self.approx_match_score(prediction, answer)
+                if sm == 1:
+                    old_sm_correct = True
+            if old_em_correct:
+                old_em_score+=1
+            if old_sm_correct:
+                old_subset_match_score+=1
+
+            for answer in new_answer_list:
+                em  = self.exact_match_score(prediction, answer)
+                if em == 1:
+                    new_em_correct = True
+                sm = self.approx_match_score(prediction, answer)
+                if sm == 1:
+                    new_sm_correct = True
+            if new_em_correct:
+                new_em_score+=1
+            if new_sm_correct:
+                new_subset_match_score+=1
+        
+        old_em_score /= len(predictions)
+        old_subset_match_score /= len(predictions)
+        new_em_score /= len(predictions)
+        new_subset_match_score /= len(predictions)
+        return old_em_score*100, old_subset_match_score*100, new_em_score*100, new_subset_match_score*100
+    
     def calculate_scores_multipleanswers(self, predictions, ground_truths, ids):
         em_score = 0
         subset_match_score = 0
@@ -458,6 +504,9 @@ class T5(pl.LightningModule):
         preds = self.ids_to_clean_text(generated_ids)
         targets = self.ids_to_clean_text(batch["target_ids"])
         ids = batch["label_ids"]
+        source = self.ids_to_clean_text(batch["source_ids"])
+        print("preds", preds)
+        print("targets", targets)
             
         gen_time = (time.time() - t0) / batch["source_ids"].shape[0]  
     
@@ -465,26 +514,27 @@ class T5(pl.LightningModule):
 
         self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         summ_len = np.mean(self.lmap(len, generated_ids))
+
+        em_score = 0
+        subset_match_score = 0
+        accuracy = 0
+        rouge_score = 0
+        f1_score = 0
+        old_em_score = 0 
+        old_subset_match_score = 0
+        new_em_score = 0
+        new_subset_match_score = 0
+
         if self.hparams.dataset == 'TriviaQA' or self.hparams.dataset == 'zsRE' or self.hparams.dataset == 'TREX' or self.hparams.dataset == 'NQ' or self.hparams.dataset == 'HotpotQA':
             em_score, subset_match_score, accuracy = self.calculate_scores_multipleanswers(preds, targets, ids)
-            rouge_score = 0
-            f1_score = 0
         elif self.hparams.dataset =='ELI5':
             rouge_score = self.calculate_rouge_multipleanswers(preds, targets, ids)
-            em_score = 0
-            subset_match_score = 0
-            accuracy = 0
-            f1_score = 0
         elif self.hparams.dataset =='WOW':
             f1_score = self.calculate_f1_scores(preds, targets, ids)
-            rouge_score = 0
-            em_score = 0
-            subset_match_score = 0
-            accuracy = 0
+        elif self.hparams.dataset == 'updatedqa':
+            old_em_score, old_subset_match_score, new_em_score, new_subset_match_score = self.calculate_scores_updated(preds, targets, ids)
         else:
             em_score, subset_match_score, accuracy = self.calculate_scores(preds, targets)
-            rouge_score = 0
-            f1_score = 0
         #bleu_score = self.bleu(preds,targets)
         self.em_score_list.append(em_score)
         self.subset_score_list.append(subset_match_score)
@@ -494,6 +544,10 @@ class T5(pl.LightningModule):
         accuracy = torch.tensor(accuracy,dtype=torch.float32)
         rouge_score = torch.tensor(rouge_score, dtype=torch.float32)
         f1_score = torch.tensor(f1_score, dtype=torch.float32)
+        old_em_score = torch.tensor(old_em_score,dtype=torch.float32)
+        old_subset_match_score = torch.tensor(old_subset_match_score,dtype=torch.float32)
+        new_em_score = torch.tensor(new_em_score,dtype=torch.float32)
+        new_subset_match_score = torch.tensor(new_subset_match_score,dtype=torch.float32)
         #bleu_score = torch.tensor(bleu_score,dtype=torch.float32)
         if self.hparams.dataset_version=='debug':
             lama_len = 1202
@@ -510,6 +564,11 @@ class T5(pl.LightningModule):
             self.log('rouge_score', rouge_score, prog_bar=True, logger=True)
         elif self.hparams.dataset == 'WOW':
             self.log('f1_score', f1_score, prog_bar=True, logger=True)
+        elif self.hparams.dataset == 'updatedqa':
+            self.log('old_em_score', old_em_score, prog_bar=True, logger=True)
+            self.log('old_subset_match_score', old_subset_match_score, prog_bar=True, logger=True)
+            self.log('new_em_score', new_em_score, prog_bar=True, logger=True)
+            self.log('new_subset_match_score', new_subset_match_score, prog_bar=True, logger=True)
         else:
             self.log('accuracy', accuracy, prog_bar=True, logger=True)
             self.log('em_score', em_score, prog_bar=True, logger=True)
@@ -703,12 +762,12 @@ class T5(pl.LightningModule):
             dataloader = DataLoader(train_dataset, sampler=sampler,  batch_size=self.hparams.train_batch_size, drop_last=True, num_workers=self.hparams.num_workers)
         return dataloader
 
-    # def val_dataloader(self):
-    #     n_samples = self.n_obs['validation']
-    #     validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams,)
-    #     #sampler=RandomSampler(validation_dataset)
-    #     dataloader = DataLoader(validation_dataset, batch_size=self.hparams.eval_batch_size, num_workers=self.hparams.num_workers, shuffle=False)
-    #     return dataloader
+    def val_dataloader(self):
+        n_samples = self.n_obs['validation']
+        validation_dataset = self.get_dataset(tokenizer=self.tokenizer, type_path="validation", num_samples=n_samples, args=self.hparams,)
+        #sampler=RandomSampler(validation_dataset)
+        dataloader = DataLoader(validation_dataset, batch_size=self.hparams.eval_batch_size, num_workers=self.hparams.num_workers, shuffle=False)
+        return dataloader
     
     def test_dataloader(self):
         n_samples = self.n_obs['test']

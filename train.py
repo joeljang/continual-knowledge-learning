@@ -195,12 +195,6 @@ if __name__ == '__main__':
         subset_correct_num = 0
         rp_em_correct_num = 0
         rp_subset_correct_num = 0
-        f1_correct_num = 0
-        total_pred_len = 0
-        total_target_len = 0
-        f1_old_correct_num = 0
-        total_old_pred_len = 0
-        total_old_target_len = 0
         old_em_correct_num = 0
         old_subset_correct_num = 0
         f1_new_correct_num = 0
@@ -208,14 +202,12 @@ if __name__ == '__main__':
         total_new_target_len = 0
         new_em_correct_num = 0
         new_subset_correct_num = 0
-
+        average_f1 = 0
+        old_average_f1 = 0
+        new_average_f1 = 0
         def clean_up(text):
             text =text.replace('<pad>', '')
             text = text.replace('</s>', '')
-            text = text.replace("<extra_id_0>", "")
-            text = text.replace("<extra_id_1>", "")
-            text = text.replace("<extra_id_2>", "")
-            text = text.replace("<extra_id_3>", "")
             text = text.replace(".", '')
             text = text.replace(',', '')
             text = text.replace("'", '')
@@ -234,23 +226,16 @@ if __name__ == '__main__':
                     num_beams=2,
                     early_stopping=True,
                 )
-                # dec = [tokenizer.decode(ids) for ids in outs]
-                # texts = [tokenizer.decode(ids,skip_special_tokens=True) for ids in batch['source_ids']]
-                # targets = [tokenizer.decode(ids) for ids in batch['target_ids']]
                 dec = model.ids_to_clean_text(outs)
-                texts = model.ids_to_clean_text(batch['source_ids'])
+                texts = [tokenizer.decode(ids) for ids in batch['source_ids']]
                 targets = model.ids_to_clean_text(batch['target_ids'])
-                # if args.dataset == 'updatedqa' or args.dataset == 'updatedprobe'
-                #     ids = batch["label_ids"]
                     
                 for i in range(len(batch['source_ids'])):
                     total_cnt+=1
-                    # lines = textwrap.wrap("\n%s\n" % texts[i], width=200)
-                    # ground_truth = clean_up(targets[i])
-                    # predicted = clean_up(dec[i])
-                    lines = texts[i]
+                    lines = clean_up(texts[i])
                     ground_truth = targets[i]
                     predicted = dec[i]
+                    print("prediction:",total_cnt,predicted)
                     ids = batch['label_ids'][i].item()
                     if args.dataset == 'updatedqa' or args.dataset == 'updatedprobe':
                         old_answer_list = ids_to_answers[str(ids)][0]['old']
@@ -261,7 +246,8 @@ if __name__ == '__main__':
                         new_sm_correct = False
                         old_global_answer = None
                         new_global_answer = None
-                        max_f1 = 0
+                        old_max_f1 = 0
+                        new_max_f1 = 0
                         for answer in old_answer_list:
                             em = model.exact_match_score(predicted, answer)
                             if em == 1:
@@ -270,19 +256,17 @@ if __name__ == '__main__':
                             if sm == 1:
                                 old_sm_correct = True
                             f1 = model._f1_score(predicted, answer)
-                            if f1 >= max_f1:
-                                max_f1 = f1
-                                old_global_answer = answer
-                                old_num_same, old_pred_len, old_target_len = model._f1_score_zeroshot(predicted, answer)  
+                            if f1 >= old_max_f1:
+                                old_max_f1 = f1
+                                old_global_answer = answer 
 
                         if old_em_correct:
                             old_em_correct_num+=1
                         if old_sm_correct:
                             old_subset_correct_num+=1
-                        f1_old_correct_num+=old_num_same
-                        total_old_pred_len+=old_pred_len
-                        total_old_target_len+=old_target_len
+                        old_average_f1 += old_max_f1
 
+                    
                         for answer in new_answer_list:
                             em = model.exact_match_score(predicted, answer)
                             if em == 1:
@@ -291,89 +275,74 @@ if __name__ == '__main__':
                             if sm == 1:
                                 new_sm_correct = True
                             f1 = model._f1_score(predicted, answer)
-                            if f1 >= max_f1:
-                                max_f1 = f1
+                            if f1 >= new_max_f1:
+                                new_max_f1 = f1
                                 new_global_answer = answer
-                                new_num_same, new_pred_len, new_target_len = model._f1_score_zeroshot(predicted, answer)  
 
                         if new_em_correct:
                             new_em_correct_num+=1
                         if new_sm_correct:
                             new_subset_correct_num+=1
-                        f1_new_correct_num+=new_num_same
-                        total_new_pred_len+=new_pred_len
-                        total_new_target_len+=new_target_len
-                        if model_type == 'T5':
-                            writer.writerow([ids, lines, old_global_answer, new_global_answer, predicted])
-                        else: 
-                            writer.writerow([lines, old_global_answer, new_global_answer, predicted])
+                        new_average_f1 += new_max_f1
+
+                        writer.writerow([ids, lines, old_global_answer, new_global_answer, predicted])
                             
+                    elif args.dataset == 'recentprobe' or args.dataset == 'recentqa' or args.dataset == 'recentprobe_h':
+                        answer_list = ids_to_answers[str(ids)]
+                        em_correct = False
+                        sm_correct = False
+                        global_answer = None
+                        max_f1 = 0
+                        for answer in answer_list:
+                            em = model.exact_match_score(predicted, answer)
+                            if em == 1:
+                                em_correct = True
+                            sm = model.approx_match_score(predicted, answer)
+                            if sm == 1:
+                                sm_correct = True
+                            f1 = model._f1_score(predicted, answer)
+                            if f1 >= max_f1:
+                                max_f1 = f1
+                                global_answer = answer 
+
+                        if em_correct:
+                            em_correct_num+=1
+                        if sm_correct:
+                            subset_correct_num+=1
+                        average_f1 += max_f1
+                        writer.writerow([ids, lines, global_answer, predicted])
+
+
                     else:
-                    # lines = model.ids_to_clean_text(batch['source_ids'])
-                    # ground_truth = model.ids_to_clean_text(batch['target_ids'])
-                    # predicted = model.ids_to_clean_text(outs)
                         em = model.exact_match_score(predicted, ground_truth)
-                        subset = model.approx_match_score(predicted, ground_truth)   
-                        num_same, pred_len, target_len = model._f1_score_zeroshot(predicted, ground_truth)  
+                        subset = model.approx_match_score(predicted, ground_truth)    
+                        f1 = model._f1_score(predicted, ground_truth)
                         print(f'{total_cnt} INPUT : {lines}')
                         print(f'GROUD TRUTH: {ground_truth}, MODEL OUTPUT: {predicted}')
-                        if model_type == 'T5':
-                            writer.writerow([ids, lines, ground_truth, predicted])
-                        else: 
-                            writer.writerow([lines, ground_truth, predicted])
-                        if args.dataset == 'recentnews':
-                            if total_cnt < 20725:
-                                if em == 1:
-                                    em_correct_num+=1
-                                if subset == 1:
-                                    subset_correct_num+=1
-                            else:
-                                rp_cnt+=1
-                                if em == 1:
-                                    rp_em_correct_num+=1
-                                if subset == 1:
-                                    rp_subset_correct_num+=1
-                        elif args.dataset == 'recentprobe':
-                            if em == 1:
-                                em_correct_num+=1
-                            if subset == 1:
-                                subset_correct_num+=1
-                        else:
-                            # zero-shot accuracy for WnED and CWEB
-                            accuracy = model.accuracy_match_score(predicted, ground_truth)
-                            if accuracy == 1:
-                                accuracy_correct_num +=1
-                            if em == 1:
-                                em_correct_num+=1
-                            if subset == 1:
-                                subset_correct_num+=1  
-                            f1_correct_num+=num_same
-                            total_pred_len+=pred_len
-                            total_target_len+=target_len
-        if args.dataset == 'recentnews':
+                        writer.writerow([ids, lines, ground_truth, predicted])
+                        accuracy = model.accuracy_match_score(predicted, ground_truth)
+                        if accuracy == 1:
+                            accuracy_correct_num +=1
+                        if em == 1:
+                            em_correct_num+=1
+                        if subset == 1:
+                            subset_correct_num+=1  
+                        average_f1 += f1
+        if args.dataset == 'updatedqa' or args.dataset == 'updatedprobe':
             print(f'Number of total validation data: {total_cnt}')
-            print(f'Number of correct lama predictions out of 20725 : {em_correct_num, subset_correct_num}. Percentage : {em_correct_num / 20725, subset_correct_num / 20725}')
-            print(f'Number of correct recentprobe predictions out of {rp_cnt} : {rp_em_correct_num, rp_subset_correct_num}. Percentage : {rp_em_correct_num / rp_cnt, rp_subset_correct_num / rp_cnt}')
-        elif args.dataset == 'recentprobe':
-            print(f'Number of total validation data: {total_cnt}')
-            print(f'Number of correct predictions: {em_correct_num, subset_correct_num}. Percentage : {(em_correct_num / total_cnt)*100, (subset_correct_num / total_cnt)*100}')
-        elif args.dataset == 'updatedqa' or args.dataset == 'updatedprobe':
-            print(f'Number of total validation data: {total_cnt}')
-            old_precision = 1.0 * f1_old_correct_num / total_old_pred_len
-            old_recall = 1.0 * f1_old_correct_num / total_old_target_len
-            old_f1_score = (2 * old_precision * old_recall) / (old_precision + old_recall)
-            new_precision = 1.0 * f1_new_correct_num / total_new_pred_len
-            new_recall = 1.0 * f1_new_correct_num / total_new_target_len
-            new_f1_score = (2 * new_precision * new_recall) / (new_precision + new_recall)
-            print(f'Number of old correct predictions: {old_em_correct_num, old_subset_correct_num}. Percentage : {old_f1_score, old_em_correct_num / total_cnt, old_subset_correct_num / total_cnt}')
-            print(f'Number of new correct predictions: {new_em_correct_num, new_subset_correct_num}. Percentage : {new_f1_score, new_em_correct_num / total_cnt, new_subset_correct_num / total_cnt}')
+            with open(args.output_log, 'a', newline='') as writefile:  
+                writer = csv.writer(writefile)
+                writer.writerow([old_em_correct_num, old_subset_correct_num, old_average_f1 / total_cnt, old_em_correct_num / total_cnt, old_subset_correct_num / total_cnt])
+                writer.writerow([new_em_correct_num, new_subset_correct_num,new_average_f1/ total_cnt, new_em_correct_num / total_cnt, new_subset_correct_num / total_cnt])
+            print(f'Number of old correct predictions: {old_em_correct_num, old_subset_correct_num}. Percentage : {old_average_f1 / total_cnt, old_em_correct_num / total_cnt, old_subset_correct_num / total_cnt}')
+            print(f'Number of new correct predictions: {new_em_correct_num, new_subset_correct_num}. Percentage : {new_average_f1 / total_cnt, new_em_correct_num / total_cnt, new_subset_correct_num / total_cnt}')
 
         else:
             print(f'Number of total validation data: {total_cnt}')
-            precision = 1.0 * f1_correct_num / total_pred_len
-            recall = 1.0 * f1_correct_num / total_target_len
-            f1_score = (2 * precision * recall) / (precision + recall)
-            print(f'Number of correct predictions: {em_correct_num, subset_correct_num}. Percentage : {f1_score, em_correct_num / total_cnt, subset_correct_num / total_cnt}')
+            with open(args.output_log, 'a', newline='') as writefile:  
+                writer = csv.writer(writefile)
+                writer.writerow([em_correct_num, subset_correct_num, average_f1 / total_cnt, em_correct_num / total_cnt, subset_correct_num / total_cnt])
+            print(f'Number of correct predictions: {em_correct_num, subset_correct_num}. Percentage : {average_f1 / total_cnt, em_correct_num / total_cnt, subset_correct_num / total_cnt}')
     else:
         set_seed(40)
         if args.checkpoint_path!="":

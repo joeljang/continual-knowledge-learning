@@ -74,30 +74,54 @@ class Pretrain(Dataset):
             else:
                 print("finetuning ratio is", self.args.finetuning_ratio)
                 self.dataset = pd.read_csv('data/lama_invariant_template.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))         
-        elif self.args.dataset == 'updatedprobe':
-            original = pd.read_csv('data/updated_lama.csv')
-            if type_path =='train':
-                self.dataset = pd.read_csv('data/updated_lama.csv', nrows=int(len(original)*self.args.finetuning_ratio))
-            else:
-                self.dataset = pd.read_csv('data/updated_lama.csv', skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))  
-            with open('data/updatedlama_val_answers.json') as f:
-                ids_to_answers = json.load(f)        
-        elif self.args.dataset == 'recentprobe' or self.args.dataset == 'recentqa':
+        elif self.args.dataset == 'updatedprobe' or self.args.dataset == 'updatedqa':
             if self.dataset_version == 'small':
                 if self.args.split:
                     if self.args.split==1:
-                        rp_dir = 'data/split/recentprobe_small1.csv'
+                        rp_dir = 'data/updatedlama/updatedLAMA_small_split1.csv'
                     else:
-                        rp_dir = 'data/split/recentprobe_small2.csv'
-                else:
-                    rp_dir = 'data/recentprobe_paq_small.csv'
+                        rp_dir = 'data/updatedlama/updatedLAMA_small_split2.csv'
+                else: 
+                    rp_dir = 'data/updatedlama/updatedLAMA_small.csv'
             elif self.dataset_version == 'full':
-                rp_dir = 'data/recentprobe_paq_full.csv'
+                rp_dir = 'data/updatedlama/updatedLAMA_full.csv'
+            original = pd.read_csv(rp_dir)
+            if type_path =='train':
+                self.dataset = pd.read_csv(rp_dir, nrows=int(len(original)*self.args.finetuning_ratio))
+            else:
+                self.dataset = pd.read_csv(rp_dir, skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio))  
+            with open('data/updatedlama_val_answers.json') as f:
+                ids_to_answers = json.load(f)  
+        elif self.args.dataset == 'recentprobe_h' or self.args.dataset == 'recetnqa_h':
+            if self.dataset_version == 'small':
+                rp_dir = 'data/newlama/NewLama_hard_small.csv'
+            elif self.dataset_version == 'full':
+                rp_dir = 'data/newlama/NewLama_hard.csv'
             original = pd.read_csv(rp_dir)
             if type_path =='train':
                 self.dataset = pd.read_csv(rp_dir, nrows=int(len(original)*self.args.finetuning_ratio))
             else:
                 self.dataset = pd.read_csv(rp_dir, skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio)) 
+            with open('data/recentlama_h_val_answers.json') as f:
+                ids_to_answers = json.load(f) 
+        elif self.args.dataset == 'recentprobe' or self.args.dataset == 'recentqa':
+            if self.dataset_version == 'small':
+                if self.args.split:
+                    if self.args.split==1:
+                        rp_dir = 'data/newlama/newLAMA_small_split1.csv'
+                    else:
+                        rp_dir = 'data/newlama/newLAMA_small_split2.csv'
+                else:
+                    rp_dir = 'data/newlama/newLAMA_small.csv'
+            elif self.dataset_version == 'full':
+                rp_dir = 'data/newlama/newLAMA_full.csv'
+            original = pd.read_csv(rp_dir)
+            if type_path =='train':
+                self.dataset = pd.read_csv(rp_dir, nrows=int(len(original)*self.args.finetuning_ratio))
+            else:
+                self.dataset = pd.read_csv(rp_dir, skiprows=lambda i:i>0 and i<=int(len(original)*self.args.finetuning_ratio)) 
+            with open('data/recentlama_val_answers.json') as f:
+                ids_to_answers = json.load(f) 
         elif self.args.dataset== 'TriviaQA':
             # Get the KILT task datasets
             kilt_triviaqa = load_dataset("kilt_tasks", name="triviaqa_support_only")
@@ -162,6 +186,8 @@ class Pretrain(Dataset):
         elif self.args.dataset== 'WOW':
             kilt_wow = load_dataset("kilt_tasks", name="wow", ignore_verifications=True)
             self.dataset = kilt_wow[type_path]
+        elif self.args.dataset == 'wikitext103':
+            self.dataset = pd.read_csv('data/wikipedia_pretrain_1G_final.csv')
         else:
             raise NameError('Select the correct Dataset!')
         print(f'Length of dataset retrieving is.. {len(self.dataset)}')
@@ -238,37 +264,44 @@ class Pretrain(Dataset):
                         input_pre = ' '.join(input_pre.split()[:index])
                         break
                 if self.type_path == 'train':
-                    input_ = input_pre + ' ' + example_batch['output'] 
-                    target_= input_pre + ' ' + example_batch['output'] 
+                    input_ = input_pre + ' ' + example_batch['output'] + '.'
+                    target_= input_pre + ' ' + example_batch['output'] + '.'
                 else: 
                     input_ = input_pre
                     label_ = example_batch['output']
-                    target_ = input_pre + ' ' + example_batch['output']
+                    target_ = input_pre + ' ' + example_batch['output'] + '.'
             elif self.model_type == 'T5':
                 input_ = example_batch['input']
                 target_ = example_batch['output']
         elif self.args.dataset == 'updatedprobe':
             input_ = example_batch['statement']
             target_ = example_batch['new_answer']
+        elif self.args.dataset == 'recentprobe_h':
+            input_ = example_batch['statement']
+            target_ = example_batch['answer']
         elif self.args.dataset == 'recentprobe':
-            input_ = example_batch['input']
-            target_ = example_batch['output']
+            input_ = example_batch['statement']
+            target_ = example_batch['answer']
         elif self.args.dataset == 'recentqa':
             if self.model_type == 'GPT2':
                 if self.type_path == 'train':
-                    input_ = example_batch['question'] + ' ' + example_batch['output']
-                    target_ = example_batch['question'] + ' ' + example_batch['output']
+                    input_ = example_batch['question'] + ' ' + example_batch['answer'].split(';')[0] + '.'
+                    target_ = example_batch['question'] + ' ' + example_batch['answer'].split(';')[0] + '.'
                 else:
                     input_ = example_batch['question']
-                    label_ = example_batch['output']
-                    target_ = str(example_batch['question']) + ' ' + str(example_batch['output'])
+                    label_ = example_batch['answer'].split(';')[0] + '.'
+                    target_ = str(example_batch['question']) + ' ' + str(example_batch['answer'])
             elif self.model_type == 'T5':
                 input_ = example_batch['question']
-                target_ = example_batch['output']
+                target_ = example_batch['answer'].split(';')[0]
         elif (self.args.dataset== 'TriviaQA' or self.args.dataset== 'fever' or self.args.dataset== 'AY2' or self.args.dataset== 'WNED' or self.args.dataset== 'CWEB' 
         or self.args.dataset== 'TREX' or self.args.dataset== 'zsRE' or self.args.dataset== 'NQ' or self.args.dataset== 'HotpotQA' or self.args.dataset== 'ELI5' or self.args.dataset== 'WOW'):
             input_ = example_batch['input']
             target_ = example_batch['output'][0]['answer']
+        elif self.args.dataset == 'wikitext103':
+            input_ = example_batch['original']
+            target_= example_batch['original']
+                
         else:
             raise Exception('Select the correct dataset!')
         source = self.tokenizer.batch_encode_plus([str(input_)], max_length=self.input_length, 
@@ -278,14 +311,11 @@ class Pretrain(Dataset):
         if self.type_path == 'validation' and self.model_type =='GPT2':
             labels = self.tokenizer.batch_encode_plus([str(label_)], max_length=self.output_length, 
                                                     padding='max_length', truncation=True, return_tensors="pt")   
-        elif (self.args.dataset== 'TriviaQA' or self.args.dataset== 'fever' or self.args.dataset== 'AY2' or self.args.dataset== 'WNED' or self.args.dataset== 'CWEB' 
+        elif (self.args.dataset == 'lama' or self.args.dataset== 'TriviaQA' or self.args.dataset== 'fever' or self.args.dataset== 'AY2' or self.args.dataset== 'WNED' or self.args.dataset== 'CWEB' 
         or self.args.dataset== 'TREX' or self.args.dataset== 'zsRE' or self.args.dataset== 'NQ' or self.args.dataset== 'HotpotQA' or self.args.dataset== 'ELI5' or self.args.dataset== 'WOW'):
             labels = example_batch['id']
-            answer_lst = []
-            for entry in example_batch['output']:
-                answer_lst.append(entry['answer'])
-        elif self.args.dataset == 'updatedprobe' or self.args.dataset == 'lama' or (self.args.dataset == 'recentnews' and self.type_path == 'validation'):
-            labels = example_batch['id']
+        elif (self.args.dataset == 'recentprobe_h' or self.args.dataset == 'updatedprobe' or self.args.dataset == 'recentprobe' or self.args.dataset == 'recentqa' or (self.args.dataset == 'recentnews' and self.type_path == 'validation')):
+            labels = example_batch['unique_id']
         else:
             labels = None                       
         return source, targets, labels
@@ -306,11 +336,11 @@ class Pretrain(Dataset):
         target_mask = targets["attention_mask"].squeeze()
 
         if labels is not None:
-            if (self.args.dataset == 'updatedprobe' or self.args.dataset == 'lama' or self.args.dataset== 'recentnews' or self.args.self.args.dataset== 'TriviaQA' or self.args.dataset== 'fever' or self.args.dataset== 'AY2' or self.args.dataset== 'WNED' or self.args.dataset== 'CWEB' 
+            if self.type_path == 'validation' and self.model_type =='GPT2':
+                label_ids = labels["input_ids"].squeeze()
+            elif (self.args.dataset == 'recentprobe_h' or self.args.dataset == 'recentprobe' or self.args.dataset == 'recentqa' or self.args.dataset == 'updatedprobe' or self.args.dataset == 'lama' or self.args.dataset== 'recentnews' or self.args.self.args.dataset== 'TriviaQA' or self.args.dataset== 'fever' or self.args.dataset== 'AY2' or self.args.dataset== 'WNED' or self.args.dataset== 'CWEB' 
             or self.args.dataset== 'TREX' or self.args.dataset== 'zsRE' or self.args.dataset== 'NQ' or self.args.dataset== 'HotpotQA' or self.args.dataset== 'ELI5' or self.args.dataset== 'WOW'):
                 label_ids = labels
-            else:
-                label_ids = labels["input_ids"].squeeze()
         else:
             label_ids = -1
 
