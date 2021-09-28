@@ -181,6 +181,42 @@ class GPT2(pl.LightningModule):
         f1_score /= len(predictions)
         return em_score*100, subset_match_score*100, f1_score * 100
 
+
+    def calculate_scores_multipleanswers(self, predictions, ground_truths, ids):
+        em_score = 0
+        subset_match_score = 0
+        f1_score = 0
+        
+        for i in range(len(predictions)):
+            unique_id = str(ids[i].item())
+            answers = self.ids_to_answers[unique_id]
+            #ground_truths = ground_truths[i]
+            prediction = predictions[i]
+            em_correct = False
+            sm_correct = False
+            max_f1 = 0
+            for answer in answers:
+                f1 = self._f1_score(prediction, answer)
+                if max_f1 < f1:
+                    max_f1 = f1
+                em = self.exact_match_score(prediction, answer)
+                if em == 1:
+                    em_correct = True
+                    print("THis is correct case!!!", prediction, answers)
+                sm = self.approx_match_score(prediction, answer)
+                if sm == 1:
+                    sm_correct = True
+            f1_score+=max_f1
+            if em_correct:
+                em_score+=1
+            if sm_correct:
+                subset_match_score+=1
+        
+        f1_score /= len(predictions)
+        em_score /= len(predictions)
+        subset_match_score /= len(predictions)
+        return em_score*100, subset_match_score*100, f1_score*100
+
     def bleu(self, gen, ref):
         ''' 
         calculate pair wise bleu score. uses nltk implementation
@@ -286,16 +322,22 @@ class GPT2(pl.LightningModule):
         val_num = batch_idx * len(batch["source_ids"]) * self.hparams.n_gpu #For 2 val logs
         t0 = time.time()
         
+        input_length = self.hparams.max_input_length
+        if self.hparams.dataset=='lama':
+            max_length = 53
+        elif self.hparams.dataset=='recentqa':
+            max_length = 110
+            
         generated_ids = self.model.generate(
             batch["source_ids"],
             attention_mask=batch["source_mask"],
             use_cache=True,
-            max_length=53,
+            max_length=max_length,
             num_beams=2,
             early_stopping=True
         )
 
-        generated_ids = torch.transpose(torch.transpose(generated_ids,0,1)[50:],0,1)
+        generated_ids = torch.transpose(torch.transpose(generated_ids,0,1)[input_length:],0,1)
         preds = self.ids_to_clean_text(generated_ids)
         clean_preds = []
         for text in preds:
@@ -305,8 +347,14 @@ class GPT2(pl.LightningModule):
                 clean_preds.append(text)
         source = self.ids_to_clean_text(batch["source_ids"])
         print("clean_preds",clean_preds)
-        targets = self.ids_to_clean_text(batch["label_ids"])
+        targets = self.ids_to_clean_text(batch["ground_truth_ids"])
+        ids = batch["label_ids"]
         print("targets",targets)
+    
+        # with open(self.hparams.output_log, 'a', newline='') as writefile:
+        #     writer = csv.writer(writefile)
+        #     for i in range(len(ids)):
+        #         writer.writerow([ids[i].item(), source[i], targets[i],clean_preds[i]])
             
         gen_time = (time.time() - t0) / batch["source_ids"].shape[0]  
     
@@ -314,7 +362,8 @@ class GPT2(pl.LightningModule):
 
         self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         summ_len = np.mean(self.lmap(len, generated_ids))
-        em_score, subset_match_score, f1_score = self.calculate_scores(clean_preds, targets)
+        # em_score, subset_match_score, f1_score = self.calculate_scores(clean_preds, targets)
+        em_score, subset_match_score, f1_score = self.calculate_scores_multipleanswers(clean_preds, targets, ids)
         #bleu_score = self.bleu(preds,targets)
         self.em_score_list.append(em_score)
         self.subset_score_list.append(subset_match_score)
