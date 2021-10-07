@@ -1,5 +1,4 @@
 # Towards Continual Knowledge Learning of Language Models
-Soon to be updated
 
 This is the official github repository for Towards Continual Knowledge Learning of Language Models
 
