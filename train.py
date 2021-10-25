@@ -47,13 +47,10 @@ if __name__ == '__main__':
         hparam.split_num = 1
     if 'split' not in hparam:
         hparam.split = 0
-
-    grad_norm = 0.5
-
-    #If using pruning method, no grad_norm
+    if 'grad_norm' not in hparam:
+        hparam.grad_norm = 0.5
     if 'weight_decay' not in hparam:
         hparam.weight_decay = 0.0
-
     if 'output_log' not in hparam:
         hparam.output_log = None
         
@@ -92,7 +89,7 @@ if __name__ == '__main__':
         early_stop_callback=False,
         use_deepspeed=hparam.use_deepspeed,
         opt_level='O1', # you can find out more on optimisation levels here https://nvidia.github.io/apex/amp.html#opt-levels-and-properties
-        max_grad_norm=grad_norm, # if you enable 16-bit training then set this to a sensible value, 0.5 is a good default
+        max_grad_norm=hparam.grad_norm, # if you enable 16-bit training then set this to a sensible value, 0.5 is a good default
         seed=42,
         check_validation_only=hparam.check_validation,
         checkpoint_path=hparam.checkpoint_path,
