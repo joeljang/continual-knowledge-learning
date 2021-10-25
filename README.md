@@ -39,28 +39,28 @@ For the other experimental settings such as multiple CKL phases, GPT-2, we do no
 ### 3. Reproduce Experimental Results
 We provide all the configs in order to reproduce the zero-shot results of our paper. We only provide the model checkpoints for the main experimental setting (full_setting) which can be downloaded with the command above.
 
-configs
-├── full_setting
-│   ├── evaluation
-│   |   ├── invariantLAMA
-│   |   |   ├── t5_baseline.json
-│   |   |   ├── t5_kadapters.json
-│   |   |   ├── ...
-│   |   ├── newLAMA
-│   |   ├── newLAMA_easy
-│   |   ├── updatedLAMA
-│   ├── training
-│   |   ├── t5_baseline.json
-│   |   ├── t5_kadapters.json
-│   |   ├── ...
-├── GPT2
-│   ├── ...
-├── kilt
-│   ├── ...
-├── small_setting
-│   ├── ...
-├── split
-│   ├── ...                    
+    configs
+    ├── full_setting
+    │   ├── evaluation
+    │   |   ├── invariantLAMA
+    │   |   |   ├── t5_baseline.json
+    │   |   |   ├── t5_kadapters.json
+    │   |   |   ├── ...
+    │   |   ├── newLAMA
+    │   |   ├── newLAMA_easy
+    │   |   ├── updatedLAMA
+    │   ├── training
+    │   |   ├── t5_baseline.json
+    │   |   ├── t5_kadapters.json
+    │   |   ├── ...
+    ├── GPT2
+    │   ├── ...
+    ├── kilt
+    │   ├── ...
+    ├── small_setting
+    │   ├── ...
+    ├── split
+    │   ├── ...                    
 
 #### Components in each configurations file
 - input_length (int) : the input sequence length
