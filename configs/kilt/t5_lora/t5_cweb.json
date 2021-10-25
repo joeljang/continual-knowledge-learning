@@ -23,5 +23,6 @@
     "mode" : "finetune",
     "use_lr_scheduling" : false,
     "check_validation" : true,
-    "checkpoint_path" : "T5_large_lora_AY2_finetuning_baseline/last.ckpt"
+    "checkpoint_path" : "T5_large_lora_AY2_finetuning_baseline/last.ckpt",
+    "output_log" : "log/kilt/CWEB/lora.csv"
 }
