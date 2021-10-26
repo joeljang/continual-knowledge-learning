@@ -22,5 +22,5 @@ def download_public_file(bucket_name, directory_name):
             )
         )
 
-os.makedirs('data', exist_ok=True)
+os.makedirs('ckl_data', exist_ok=True)
 download_public_file('continual_learning', 'ckl_data/')

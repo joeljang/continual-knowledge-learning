@@ -3,6 +3,7 @@ from transformers import T5Tokenizer
 from Datasets import Pretrain
 from torch.utils.data import DataLoader
 import csv
+import os
 
 def evaluate(args, Model):
     model = Model(args)
@@ -35,7 +36,15 @@ def evaluate(args, Model):
         text = text.replace("'", '')
         text = text.replace('"', '')
         return text   
-    
+    # If folder doesn't exist, then create it.
+    MYDIR = ("/".join((args.output_log.split('/'))[:-1]))
+    CHECK_FOLDER = os.path.isdir(MYDIR)
+    if not CHECK_FOLDER:
+        os.makedirs(MYDIR)
+        print("created folder : ", MYDIR)
+    else:
+        print(MYDIR, "folder already exists.")
+
     with open(args.output_log, 'w', newline='') as writefile:  
         writer = csv.writer(writefile)
         for batch in iter(loader):

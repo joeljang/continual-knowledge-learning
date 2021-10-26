@@ -60,12 +60,12 @@ class Pretrain(Dataset):
             if self.args.dataset == 'invariantlama':
                 # light tuning 5000 instances for GPT2 experiment
                 if type_path =='train':
-                    self.dataset = pd.read_csv('data/invariantLAMA_5000.csv')
+                    self.dataset = pd.read_csv('data/trex_5000.csv')
                 else:
-                    self.dataset = pd.read_csv('data/lama_invariant_template.csv')
+                    self.dataset = pd.read_csv('data/invariantLAMA.csv')
             elif self.args.dataset == 'updatedlama':
                 if self.dataset_version == 'full':
-                    rp_dir = 'data/updatedlama/updatedLAMA_full.csv'
+                    rp_dir = 'data/updatedlama/updatedLAMA.csv'
                 else: 
                     raise Exception('Not supporting small setting for updatedLAMA.')
                 self.dataset = pd.read_csv(rp_dir)  
@@ -73,7 +73,7 @@ class Pretrain(Dataset):
                     ids_to_answers = json.load(f)  
             elif self.args.dataset == 'newlama':
                 if self.dataset_version == 'full':
-                    rp_dir = 'data/newlama/NewLama_hard.csv'
+                    rp_dir = 'data/newlama/newLAMA.csv'
                 else: 
                     raise Exception('Not supporting small setting for newLAMA.')
                 self.dataset = pd.read_csv(rp_dir)
@@ -83,13 +83,13 @@ class Pretrain(Dataset):
                 if self.dataset_version == 'small':
                     if self.args.split:
                         if self.args.split==1:
-                            rp_dir = 'data/newlama/newLAMA_small_split1.csv'
+                            rp_dir = 'data/newlama/newLAMA_easy_small_split1.csv'
                         else:
-                            rp_dir = 'data/newlama/newLAMA_small_split2.csv'
+                            rp_dir = 'data/newlama/newLAMA_easy_small_split2.csv'
                     else:
-                        rp_dir = 'data/newlama/newLAMA_small.csv'
+                        rp_dir = 'data/newlama/newLAMA_easy_small.csv'
                 elif self.dataset_version == 'full':
-                    rp_dir = 'data/newlama/newLAMA_full.csv'
+                    rp_dir = 'data/newlama/newLAMA_easy.csv'
                 # light tuning 5000 instances for GPT2 experiment
                 if type_path =='train':
                     self.dataset = pd.read_csv('data/newlama/newLAMA_5000.csv')
