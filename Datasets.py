@@ -92,7 +92,7 @@ class Pretrain(Dataset):
                     rp_dir = 'data/newlama/newLAMA_easy.csv'
                 # light tuning 5000 instances for GPT2 experiment
                 if type_path =='train':
-                    self.dataset = pd.read_csv('data/newlama/newLAMA_5000.csv')
+                    self.dataset = pd.read_csv('data/newlama/newLAMA_easy_5000.csv')
                 else:
                     self.dataset = pd.read_csv(rp_dir) 
                 with open('data/recentlama_val_answers.json') as f:
