@@ -1,8 +1,8 @@
 import pytorch_lightning as pl
-from models.Modular_GPT2 import GPT2LMHeadModel as GPT2_Modular
-from models.Kadapter_GPT2 import GPT2LMHeadModel as GPT2_Kadapter
-from models.Lora_GPT2 import GPT2LMHeadModel as GPT2_Lora
-from models.RecAdam import RecAdam
+#from models.Modular_GPT2 import GPT2LMHeadModel as GPT2_Modular
+#from models.Kadapter_GPT2 import GPT2LMHeadModel as GPT2_Kadapter
+#from models.Lora_GPT2 import GPT2LMHeadModel as GPT2_Lora
+#from models.RecAdam import RecAdam
 
 from transformers import (
     Adafactor,
@@ -26,7 +26,7 @@ class GPT2(pl.LightningModule):
         self.mix_ratio = 4
         self.mix_decay = 0.7
         self.epoch = 0
-
+        '''
         if hparams.method=='kadapter':
             self.model = GPT2_Kadapter.from_pretrained(hparams.model_name_or_path)
         elif hparams.method=='lora':
@@ -38,7 +38,8 @@ class GPT2(pl.LightningModule):
             self.pretrained_model = GPT2LMHeadModel.from_pretrained(hparams.model_name_or_path)
             self.freeze_params(self.pretrained_model) #Freezing pretrained model
         else:
-            self.model = GPT2LMHeadModel.from_pretrained(hparams.model_name_or_path)
+        '''
+        self.model = GPT2LMHeadModel.from_pretrained(hparams.model_name_or_path)
         self.tokenizer = GPT2Tokenizer.from_pretrained(hparams.model_name_or_path)
         self.tokenizer.add_special_tokens({
             "eos_token": "</s>",
