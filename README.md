@@ -21,17 +21,17 @@ pip3 install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 -f h
 ### 2. Download the data used for the experiments.
 To download only the CKL benchmark dataset:
 ```
-python download_ckl_data.py
+wget https://continual.blob.core.windows.net/ckl/ckl_data.zip
 ```
 
 To download ALL of the data used for the experiments (required to reproduce results):
 ```
-python download_all_data.py
+wget https://continual.blob.core.windows.net/ckl/data.zip
 ```
 
 To download the (continually pretrained) model checkpoints of the main experiment (required to reproduce results):
 ```
-python download_model_checkpoints.py
+wget https://continual.blob.core.windows.net/ckl/modelcheckpoints_main.zip
 ```
 
 For the other experimental settings such as multiple CKL phases, GPT-2, we do not separately provide the continually pretrained model checkpoints.
