@@ -23,4 +23,7 @@ def download_public_file(bucket_name, directory_name):
         )
 
 os.makedirs('data', exist_ok=True)
+os.makedirs('data/newlama', exist_ok=True)
+os.makedirs('data/split', exist_ok=True)
+os.makedirs('data/updatedlama', exist_ok=True)
 download_public_file('continual_learning', 'data/')
