@@ -1,6 +1,6 @@
 # Towards Continual Knowledge Learning of Language Models
 
-This is the official github repository for [Towards Continual Knowledge Learning of Language Models](https://arxiv.org/abs/2110.03215).
+This is the official github repository for [Towards Continual Knowledge Learning of Language Models](https://arxiv.org/abs/2110.03215), accepted at ICLR 2022.
 
 In order to reproduce our results, take the following steps:
 ### 1. Create conda environment and install requirements
