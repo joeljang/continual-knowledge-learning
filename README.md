@@ -4,11 +4,13 @@ This is the official github repository for [Towards Continual Knowledge Learning
 
 Use the following to cite our paper:
 ```
-@inproceedings{jang2022towards,
+@inproceedings{
+  jang2022towards,
   title={Towards Continual Knowledge Learning of Language Models},
-  author={Jang, Joel and Ye, Seonghyeon and Yang, Sohee and Shin, Joongbo and Han, Janghoon and Kim, Gyeonghun and Choi, Stanley Jungkyu and Seo, Minjoon},
-  booktitle={ICLR},
-  year={2022}
+  author={Joel Jang and Seonghyeon Ye and Sohee Yang and Joongbo Shin and Janghoon Han and Gyeonghun KIM and Stanley Jungkyu Choi and Minjoon Seo},
+  booktitle={International Conference on Learning Representations},
+  year={2022},
+  url={https://openreview.net/forum?id=vfsRB5MImo9}
 }
 ```
 
